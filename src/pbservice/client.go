@@ -1,21 +1,23 @@
 package pbservice
 
-import "viewservice"
-import "net/rpc"
-// You'll probably need to uncomment this:
-// import "time"
+import (
+	"fmt"
+	"net/rpc"
+	"time"
+	"viewservice"
+)
 
+// You'll probably need to uncomment this:
 
 type Clerk struct {
-  vs *viewservice.Clerk
+	vs *viewservice.Clerk
 }
 
 func MakeClerk(vshost string, me string) *Clerk {
-  ck := new(Clerk)
-  ck.vs = viewservice.MakeClerk(me, vshost)
-  return ck
+	ck := new(Clerk)
+	ck.vs = viewservice.MakeClerk(me, vshost)
+	return ck
 }
-
 
 //
 // call() sends an RPC to the rpcname handler on server srv
@@ -34,18 +36,20 @@ func MakeClerk(vshost string, me string) *Clerk {
 // please don't change this function.
 //
 func call(srv string, rpcname string,
-          args interface{}, reply interface{}) bool {
-  c, errx := rpc.Dial("unix", srv)
-  if errx != nil {
-    return false
-  }
-  defer c.Close()
-    
-  err := c.Call(rpcname, args, reply)
-  if err == nil {
-    return true
-  }
-  return false
+	args interface{}, reply interface{}) bool {
+	c, errx := rpc.Dial("unix", srv)
+	if errx != nil {
+		return false
+	}
+	defer c.Close()
+
+	err := c.Call(rpcname, args, reply)
+	if err == nil {
+		return true
+	}
+
+	// fmt.Println(err)
+	return false
 }
 
 //
@@ -56,10 +60,26 @@ func call(srv string, rpcname string,
 // says the key doesn't exist (has never been Put().
 //
 func (ck *Clerk) Get(key string) string {
+	// Your code here.
+	args := &GetArgs{key}
+	var reply GetReply
+	reply.Err = ErrWrongServer
 
-  // Your code here.
+	ok := false
+	for !ok || reply.Err != OK {
+		vok := false
+		var view viewservice.View
+		for !vok {
+			view, vok = ck.vs.Get()
+		}
+		srv := view.Primary
+		if srv != "" {
+			ok = call(srv, "PBServer.Get", args, &reply)
+		}
+		time.Sleep(viewservice.PingInterval)
+	}
 
-  return "???"
+	return reply.Value
 }
 
 //
@@ -67,6 +87,38 @@ func (ck *Clerk) Get(key string) string {
 // must keep trying until it succeeds.
 //
 func (ck *Clerk) Put(key string, value string) {
+	// Your code here.
+	args := &PutArgs{key, value}
+	var reply PutReply
 
-  // Your code here.
+	ok := false
+	for !ok {
+		vok := false
+		var view viewservice.View
+		for !vok {
+			view, vok = ck.vs.Get()
+		}
+		srv := view.Primary
+		if srv != "" {
+			ok = call(srv, "PBServer.Put", args, &reply)
+		}
+		// time.Sleep(viewservice.PingInterval)   // sleep will abort locks
+	}
+	if reply.Err != OK {
+		fmt.Println(reply.Err)
+	}
+
+}
+
+// receive DB if a backup is built
+func MoveDB(backup string, db map[string]string) {
+	args := &MoveDBArgs{db}
+	var reply MoveDBReply
+	ok := call(backup, "PBServer.MoveDB", args, &reply)
+	if !ok {
+		// fmt.Println("Call MoveDB error")
+	}
+	if reply.Err != OK {
+		fmt.Println(reply.Err)
+	}
 }
