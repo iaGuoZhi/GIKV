@@ -60,12 +60,14 @@ func (pb *PBServer) Put(args *PutArgs, reply *PutReply) error {
 		pb.db[args.Key] = args.Value
 
 		// send to backup
-		ok := false
-		for !ok {
-			if pb.view.Backup == "" {
-				break // no backup
+		for i := 0; i < viewservice.BackupNums; i++ {
+			ok := false
+			for !ok {
+				if pb.view.Backup[i] == "" {
+					break // no backup
+				}
+				ok = call(pb.view.Backup[i], "PBServer.ForwardPut", args, reply)
 			}
-			ok = call(pb.view.Backup, "PBServer.ForwardPut", args, reply)
 		}
 		pb.mu.Unlock()
 	} else {
@@ -114,18 +116,20 @@ func (pb *PBServer) MoveDB(args *MoveDBArgs, reply *MoveDBReply) error {
 //
 func (pb *PBServer) tick() {
 	// Your code here.
-	backup := pb.view.Backup
+	backups := pb.view.Backup
 	v, e := pb.vs.Ping(pb.view.Viewnum)
 	if e == nil {
 		pb.connected = true
 		pb.view = v
-		newbk := pb.view.Backup
+		newbks := pb.view.Backup
 		// Primary must move DB to new backup
-		if backup != newbk && newbk != "" && pb.me == pb.view.Primary {
-			// fmt.Println("Move to backup:", newbk, "sizw:",len(pb.db))
-			pb.mu.Lock()
-			MoveDB(newbk, pb.db) // defined in client.go
-			pb.mu.Unlock()
+		for i := 0; i < viewservice.BackupNums; i++ {
+			if backups[i] != newbks[i] && newbks[i] != "" && pb.me == pb.view.Primary {
+				// fmt.Println("Move to backup:", newbk, "sizw:",len(pb.db))
+				pb.mu.Lock()
+				MoveDB(newbks[i], pb.db) // defined in client.go
+				pb.mu.Unlock()
+			}
 		}
 	} else {
 		pb.connected = false
@@ -145,7 +149,7 @@ func StartServer(vshost string, me string) *PBServer {
 	pb.me = me
 	pb.vs = viewservice.MakeClerk(me, vshost)
 	// Your pb.* initializations here.
-	pb.view = viewservice.View{0, "", ""}
+	pb.view = viewservice.View{0, "", [2]string{"", ""}}
 	pb.db = make(map[string]string)
 	pb.connected = true
 

@@ -84,6 +84,25 @@ func TestBasicFail(t *testing.T) {
 	ck.Put("3", "33")
 	check(ck, "3", "33")
 
+	// add another backup
+	fmt.Printf("Test: Add a backup ...\n")
+
+	s3 := StartServer(vshost, port(tag, 3))
+	for i := 0; i < viewservice.DeadPings*2; i++ {
+		v, _ := vck.Get()
+		if v.Backup[1] == s3.me {
+			break
+		}
+		time.Sleep(viewservice.PingInterval)
+	}
+	v, _ = vck.Get()
+	if v.Backup[1] != s3.me {
+		t.Fatal("backup never came up")
+	}
+
+	ck.Put("3b", "33b")
+	check(ck, "3b", "33b")
+
 	// give the backup time to initialize
 	time.Sleep(3 * viewservice.PingInterval)
 
@@ -106,11 +125,15 @@ func TestBasicFail(t *testing.T) {
 	}
 	v, _ = vck.Get()
 	if v.Primary != s2.me {
-		t.Fatal("backup never switched to primary")
+		t.Fatal("backup1 never switched to primary")
+	}
+	if v.Backup[0] != s3.me {
+		t.Fatal("backup2 never switched to backup1")
 	}
 
 	check(ck, "1", "v1a")
 	check(ck, "3", "33")
+	check(ck, "3b", "33b")
 	check(ck, "4", "44")
 
 	fmt.Printf("  ... Passed\n")
@@ -121,7 +144,8 @@ func TestBasicFail(t *testing.T) {
 	fmt.Printf("Test: Kill last server, new one should not be active ...\n")
 
 	s2.kill()
-	s3 := StartServer(vshost, port(tag, 3))
+	s3.kill()
+	s3 = StartServer(vshost, port(tag, 3))
 	time.Sleep(1 * time.Second)
 	get_done := false
 	go func() {
@@ -158,17 +182,19 @@ func TestFailPut(t *testing.T) {
 	s2 := StartServer(vshost, port(tag, 2))
 	time.Sleep(time.Second)
 	s3 := StartServer(vshost, port(tag, 3))
+	time.Sleep(time.Second)
+	s4 := StartServer(vshost, port(tag, 4))
 
 	for i := 0; i < viewservice.DeadPings*3; i++ {
 		v, _ := vck.Get()
-		if v.Primary != "" && v.Backup != "" {
+		if v.Primary != "" && v.Backup[0] != "" && v.Backup[1] != "" {
 			break
 		}
 		time.Sleep(viewservice.PingInterval)
 	}
 	time.Sleep(time.Second) // wait for backup initializion
 	v1, _ := vck.Get()
-	if v1.Primary != s1.me || v1.Backup != s2.me {
+	if v1.Primary != s1.me || v1.Backup[0] != s2.me || v1.Backup[1] != s3.me {
 		t.Fatalf("wrong primary or backup")
 	}
 
@@ -189,14 +215,14 @@ func TestFailPut(t *testing.T) {
 
 	for i := 0; i < viewservice.DeadPings*3; i++ {
 		v, _ := vck.Get()
-		if v.Viewnum > v1.Viewnum && v.Primary != "" && v.Backup != "" {
+		if v.Viewnum > v1.Viewnum && v.Primary != "" && v.Backup[0] != "" {
 			break
 		}
 		time.Sleep(viewservice.PingInterval)
 	}
 	time.Sleep(time.Second) // wait for backup initialization
 	v2, _ := vck.Get()
-	if v2.Primary != s1.me || v2.Backup != s3.me {
+	if v2.Primary != s1.me || v2.Backup[0] != s3.me || v2.Backup[1] != s4.me {
 		t.Fatal("wrong primary or backup")
 	}
 
@@ -226,6 +252,7 @@ func TestFailPut(t *testing.T) {
 	s1.kill()
 	s2.kill()
 	s3.kill()
+	s4.kill()
 	time.Sleep(viewservice.PingInterval * 2)
 	vs.Kill()
 }
@@ -244,7 +271,7 @@ func TestConcurrentSame(t *testing.T) {
 
 	fmt.Printf("Test: Concurrent Put()s to the same key ...\n")
 
-	const nservers = 2
+	const nservers = 3
 	var sa [nservers]*PBServer
 	for i := 0; i < nservers; i++ {
 		sa[i] = StartServer(vshost, port(tag, i+1))
@@ -252,7 +279,7 @@ func TestConcurrentSame(t *testing.T) {
 
 	for iters := 0; iters < viewservice.DeadPings*2; iters++ {
 		view, _ := vck.Get()
-		if view.Primary != "" && view.Backup != "" {
+		if view.Primary != "" && view.Backup[0] != "" && view.Backup[1] != "" {
 			break
 		}
 		time.Sleep(viewservice.PingInterval)
@@ -301,13 +328,13 @@ func TestConcurrentSame(t *testing.T) {
 	}
 	for iters := 0; iters < viewservice.DeadPings*2; iters++ {
 		view, _ := vck.Get()
-		if view.Primary == view1.Backup {
+		if view.Primary == view1.Backup[0] {
 			break
 		}
 		time.Sleep(viewservice.PingInterval)
 	}
 	view2, _ := vck.Get()
-	if view2.Primary != view1.Backup {
+	if view2.Primary != view1.Backup[0] {
 		t.Fatal("wrong Primary")
 	}
 
@@ -340,7 +367,7 @@ func TestConcurrentSameUnreliable(t *testing.T) {
 
 	fmt.Printf("Test: Concurrent Put()s to the same key; unreliable ...\n")
 
-	const nservers = 2
+	const nservers = 3
 	var sa [nservers]*PBServer
 	for i := 0; i < nservers; i++ {
 		sa[i] = StartServer(vshost, port(tag, i+1))
@@ -349,7 +376,7 @@ func TestConcurrentSameUnreliable(t *testing.T) {
 
 	for iters := 0; iters < viewservice.DeadPings*2; iters++ {
 		view, _ := vck.Get()
-		if view.Primary != "" && view.Backup != "" {
+		if view.Primary != "" && view.Backup[0] != "" && view.Backup[1] != "" {
 			break
 		}
 		time.Sleep(viewservice.PingInterval)
@@ -398,13 +425,13 @@ func TestConcurrentSameUnreliable(t *testing.T) {
 	}
 	for iters := 0; iters < viewservice.DeadPings*2; iters++ {
 		view, _ := vck.Get()
-		if view.Primary == view1.Backup {
+		if view.Primary == view1.Backup[0] {
 			break
 		}
 		time.Sleep(viewservice.PingInterval)
 	}
 	view2, _ := vck.Get()
-	if view2.Primary != view1.Backup {
+	if view2.Primary != view1.Backup[0] {
 		t.Fatal("wrong Primary")
 	}
 
@@ -438,7 +465,7 @@ func TestRepeatedCrash(t *testing.T) {
 
 	fmt.Printf("Test: Repeated failures/restarts ...\n")
 
-	const nservers = 3
+	const nservers = 4
 	var sa [nservers]*PBServer
 	for i := 0; i < nservers; i++ {
 		sa[i] = StartServer(vshost, port(tag, i+1))
@@ -446,7 +473,7 @@ func TestRepeatedCrash(t *testing.T) {
 
 	for i := 0; i < viewservice.DeadPings; i++ {
 		v, _ := vck.Get()
-		if v.Primary != "" && v.Backup != "" {
+		if v.Primary != "" && v.Backup[0] != "" && v.Backup[1] != "" {
 			break
 		}
 		time.Sleep(viewservice.PingInterval)
@@ -542,7 +569,7 @@ func TestRepeatedCrashUnreliable(t *testing.T) {
 
 	fmt.Printf("Test: Repeated failures/restarts; unreliable ...\n")
 
-	const nservers = 3
+	const nservers = 4
 	var sa [nservers]*PBServer
 	for i := 0; i < nservers; i++ {
 		sa[i] = StartServer(vshost, port(tag, i+1))
@@ -551,7 +578,7 @@ func TestRepeatedCrashUnreliable(t *testing.T) {
 
 	for i := 0; i < viewservice.DeadPings; i++ {
 		v, _ := vck.Get()
-		if v.Primary != "" && v.Backup != "" {
+		if v.Primary != "" && v.Backup[0] != "" && v.Backup[1] != "" {
 			break
 		}
 		time.Sleep(viewservice.PingInterval)
@@ -724,8 +751,8 @@ func TestPartition1(t *testing.T) {
 	s2 := StartServer(vshost, port(tag, 2))
 	time.Sleep(deadtime * 2)
 	v1, _ := vck.Get()
-	if v1.Primary != s1.me || v1.Backup != s2.me {
-		t.Fatal("backup did not join view")
+	if v1.Primary != s1.me || v1.Backup[0] != s2.me {
+		t.Fatal("backup[0] did not join view")
 	}
 
 	ck1.Put("a", "1")
@@ -812,7 +839,7 @@ func TestPartition2(t *testing.T) {
 	s2 := StartServer(vshost, port(tag, 2))
 	time.Sleep(deadtime * 2)
 	v1, _ := vck.Get()
-	if v1.Primary != s1.me || v1.Backup != s2.me {
+	if v1.Primary != s1.me || v1.Backup[0] != s2.me {
 		t.Fatal("backup did not join view")
 	}
 
@@ -848,13 +875,13 @@ func TestPartition2(t *testing.T) {
 	s3 := StartServer(vshost, port(tag, 3))
 	for iter := 0; iter < viewservice.DeadPings*3; iter++ {
 		v, _ := vck.Get()
-		if v.Backup == s3.me && v.Primary == s2.me {
+		if v.Backup[0] == s3.me && v.Primary == s2.me {
 			break
 		}
 		time.Sleep(viewservice.PingInterval)
 	}
 	v2, _ := vck.Get()
-	if v2.Primary != s2.me || v2.Backup != s3.me {
+	if v2.Primary != s2.me || v2.Backup[0] != s3.me {
 		t.Fatalf("new backup never joined")
 	}
 	time.Sleep(2 * time.Second)
