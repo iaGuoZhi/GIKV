@@ -15,10 +15,10 @@ func check(t *testing.T, ck *Clerk, p string, b1 string, b2 string, n uint) {
 		t.Fatalf("wanted primary %v, got %v", p, view.Primary)
 	}
 	if view.Backup[0] != b1 {
-		t.Fatalf("wanted backup %v, got %v", b, view.Backup[0])
+		t.Fatalf("wanted backup1 %v, got %v", b1, view.Backup[0])
 	}
 	if view.Backup[1] != b2 {
-		t.Fatalf("wanted backup %v, got %v", b, view.Backup[1])
+		t.Fatalf("wanted backup2 %v, got %v", b2, view.Backup[1])
 	}
 	if n != 0 && n != view.Viewnum {
 		t.Fatalf("wanted viewnum %v, got %v", n, view.Viewnum)
@@ -81,7 +81,25 @@ func Test1(t *testing.T) {
 			}
 			time.Sleep(PingInterval)
 		}
-		check(t, ck1, ck1.me, ck2.me, vx.Viewnum+1)
+		check(t, ck1, ck1.me, ck2.me, "", vx.Viewnum+1)
+	}
+	fmt.Printf("  ... Passed\n")
+
+	// second backup
+	fmt.Printf("Test: Second backup ...\n")
+
+	{
+		vx, _ := ck1.Get()
+		for i := 0; i < DeadPings*2; i++ {
+			ck1.Ping(vx.Viewnum)
+			ck2.Ping(vx.Viewnum)
+			view, _ := ck3.Ping(0)
+			if view.Backup[1] == ck3.me {
+				break
+			}
+			time.Sleep(PingInterval)
+		}
+		check(t, ck1, ck1.me, ck2.me, ck3.me, vx.Viewnum+1)
 	}
 	fmt.Printf("  ... Passed\n")
 
@@ -89,54 +107,58 @@ func Test1(t *testing.T) {
 	fmt.Printf("Test: Backup takes over if primary fails ...\n")
 
 	{
-		ck1.Ping(2)
-		vx, _ := ck2.Ping(2)
+		vx, _ := ck1.Get()
+		ck1.Ping(vx.Viewnum)
 		for i := 0; i < DeadPings*2; i++ {
 			v, _ := ck2.Ping(vx.Viewnum)
-			if v.Primary == ck2.me && v.Backup == "" {
+			ck3.Ping(vx.Viewnum)
+			if v.Primary == ck2.me && v.Backup[0] == ck3.me && v.Backup[1] == "" {
 				break
 			}
 			time.Sleep(PingInterval)
 		}
-		check(t, ck2, ck2.me, "", vx.Viewnum+1)
+		check(t, ck2, ck2.me, ck3.me, "", vx.Viewnum+1)
 	}
 	fmt.Printf("  ... Passed\n")
 
-	// revive ck1, should become backup
-	fmt.Printf("Test: Restarted server becomes backup ...\n")
+	// revive ck1, should become second backup
+	fmt.Printf("Test: Restarted server becomes second backup ...\n")
 
 	{
 		vx, _ := ck2.Get()
 		ck2.Ping(vx.Viewnum)
 		for i := 0; i < DeadPings*2; i++ {
 			ck1.Ping(0)
+			ck3.Ping(vx.Viewnum)
 			v, _ := ck2.Ping(vx.Viewnum)
-			if v.Primary == ck2.me && v.Backup == ck1.me {
+			if v.Primary == ck2.me && v.Backup[0] == ck3.me && v.Backup[1] == ck1.me {
 				break
 			}
 			time.Sleep(PingInterval)
 		}
-		check(t, ck2, ck2.me, ck1.me, vx.Viewnum+1)
+		check(t, ck2, ck2.me, ck3.me, ck1.me, vx.Viewnum+1)
 	}
 	fmt.Printf("  ... Passed\n")
 
-	// start ck3, kill the primary (ck2), the previous backup (ck1)
-	// should become the server, and ck3 the backup
+	// start ck4, kill the primary (ck2), the first backup (ck3)
+	// should become the server, the second backup(ck1) become
+	// first backup, and ck4 become second backup
 	fmt.Printf("Test: Idle third server becomes backup if primary fails ...\n")
 
 	{
 		vx, _ := ck2.Get()
 		ck2.Ping(vx.Viewnum)
 		for i := 0; i < DeadPings*2; i++ {
-			ck3.Ping(0)
-			v, _ := ck1.Ping(vx.Viewnum)
-			if v.Primary == ck1.me && v.Backup == ck3.me {
+			ck4.Ping(0)
+			v, _ := ck3.Ping(vx.Viewnum)
+			ck1.Ping(vx.Viewnum)
+			if v.Primary == ck3.me && v.Backup[0] == ck1.me && v.Backup[1] == ck4.me {
 				break
 			}
 			vx = v
 			time.Sleep(PingInterval)
 		}
-		check(t, ck1, ck1.me, ck3.me, vx.Viewnum+1)
+		check(t, ck1, ck3.me, ck1.me, ck4.me, vx.Viewnum+1)
 	}
 	fmt.Printf("  ... Passed\n")
 
@@ -145,34 +167,47 @@ func Test1(t *testing.T) {
 	fmt.Printf("Test: Restarted primary treated as dead ...\n")
 
 	{
-		vx, _ := ck1.Get()
-		ck1.Ping(vx.Viewnum)
+		vx, _ := ck3.Get()
+		ck3.Ping(vx.Viewnum)
 		for i := 0; i < DeadPings*2; i++ {
-			ck1.Ping(0)
-			ck3.Ping(vx.Viewnum)
-			v, _ := ck3.Get()
-			if v.Primary != ck1.me {
+			ck3.Ping(0)
+			ck1.Ping(vx.Viewnum)
+			ck4.Ping(vx.Viewnum)
+			v, _ := ck1.Get()
+			if v.Primary != ck3.me {
 				break
 			}
 			time.Sleep(PingInterval)
 		}
-		vy, _ := ck3.Get()
-		if vy.Primary != ck3.me {
-			t.Fatalf("expected primary=%v, got %v\n", ck3.me, vy.Primary)
+		vy, _ := ck1.Get()
+		if vy.Primary != ck1.me {
+			t.Fatalf("expected primary=%v, got %v\n", ck1.me, vy.Primary)
 		}
+
+		check(t, ck1, ck1.me, ck4.me, "", vx.Viewnum+1)
 	}
 	fmt.Printf("  ... Passed\n")
 
 	// set up a view with just 3 as primary,
 	// to prepare for the next test.
 	{
+		vx, _ := ck1.Get()
+		ck1.Ping(vx.Viewnum)
+		//fmt.Println(vx.Viewnum)
+		vx, _ = ck3.Get()
+		ck3.Ping(vx.Viewnum)
+		//fmt.Println(vx.Viewnum)
+		vx, _ = ck1.Get()
+		//fmt.Println(vx.Viewnum)
+		ck1.Ping(vx.Viewnum)
 		for i := 0; i < DeadPings*3; i++ {
 			vx, _ := ck3.Get()
 			ck3.Ping(vx.Viewnum)
 			time.Sleep(PingInterval)
 		}
 		v, _ := ck3.Get()
-		if v.Primary != ck3.me || v.Backup != "" {
+		if v.Primary != ck3.me || v.Backup[0] != "" || v.Backup[1] != "" {
+			t.Fatalf("wrong: primary: %s backup1: %s backup2 %s", v.Primary, v.Backup[0], v.Backup[1])
 			t.Fatalf("wrong primary or backup")
 		}
 	}
@@ -194,7 +229,7 @@ func Test1(t *testing.T) {
 			}
 			time.Sleep(PingInterval)
 		}
-		check(t, ck1, ck3.me, ck1.me, vx.Viewnum+1)
+		check(t, ck1, ck3.me, ck1.me, "", vx.Viewnum+1)
 		vy, _ := ck1.Get()
 		// ck3 is the primary, but it never acked.
 		// let ck3 die. check that ck1 is not promoted.
@@ -205,7 +240,7 @@ func Test1(t *testing.T) {
 			}
 			time.Sleep(PingInterval)
 		}
-		check(t, ck2, ck3.me, ck1.me, vy.Viewnum)
+		check(t, ck2, ck3.me, ck1.me, "", vy.Viewnum)
 	}
 	fmt.Printf("  ... Passed\n")
 

@@ -7,7 +7,7 @@ import "time"
 // primary/backup system.
 //
 // The view service goes through a sequence of numbered
-// views, each with a primary and (if possible) a backup.
+// views, each with a primary and (if possible) two backup.
 // A view consists of a view number and the host:port of
 // the view's primary and backup p/b servers.
 //
@@ -36,7 +36,7 @@ import "time"
 type View struct {
   Viewnum uint
   Primary string
-  Backup string
+  Backup [2]string
 }
 
 // clients should send a Ping RPC this often,
