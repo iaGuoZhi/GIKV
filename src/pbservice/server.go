@@ -20,10 +20,9 @@ type PBServer struct {
 	unreliable bool // for testing
 	me         string
 	vs         *viewservice.Clerk
-	// Your declarations here.
-	view      viewservice.View
-	db        map[string]string
-	connected bool
+	view       viewservice.View
+	db         map[string]string
+	connected  bool
 }
 
 func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {

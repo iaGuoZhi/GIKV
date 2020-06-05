@@ -1,0 +1,10 @@
+{
+    "http.proxy": "http://127.0.0.1:8888",
+    "[go]": {
+        //"editor.formatOnSave": false
+    },
+    "go.alternateTools": {},
+    "go.gopath": "/run/media/gz/G/c2020spring/ds/labs/lab5/ipads/pbservice",
+    "editor.formatOnSave": true,
+    "http.proxyAuthorization": null
+}
