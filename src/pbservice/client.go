@@ -76,6 +76,11 @@ func (ck *Clerk) Get(key string) string {
 		if srv != "" {
 			ok = call(srv, "PBServer.Get", args, &reply)
 		}
+
+		//key not exist
+		if reply.Err == ErrNoKey {
+			return KeyInexsitence
+		}
 		time.Sleep(viewservice.PingInterval)
 	}
 
@@ -101,6 +106,34 @@ func (ck *Clerk) Put(key string, value string) {
 		srv := view.Primary
 		if srv != "" {
 			ok = call(srv, "PBServer.Put", args, &reply)
+		}
+		// time.Sleep(viewservice.PingInterval)   // sleep will abort locks
+	}
+	if reply.Err != OK {
+		fmt.Println(reply.Err)
+	}
+
+}
+
+//
+// tell the primary to delete key from db
+// must keep trying until it succeeds.
+//
+func (ck *Clerk) Delete(key string) {
+	// Your code here.
+	args := &DeleteArgs{key}
+	var reply DeleteReply
+
+	ok := false
+	for !ok {
+		vok := false
+		var view viewservice.View
+		for !vok {
+			view, vok = ck.vs.Get()
+		}
+		srv := view.Primary
+		if srv != "" {
+			ok = call(srv, "PBServer.Delete", args, &reply)
 		}
 		// time.Sleep(viewservice.PingInterval)   // sleep will abort locks
 	}

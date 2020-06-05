@@ -89,6 +89,47 @@ func (pb *PBServer) ForwardPut(args *PutArgs, reply *PutReply) error {
 	return nil
 }
 
+func (pb *PBServer) Delete(args *DeleteArgs, reply *DeleteReply) error {
+
+	if !pb.connected { // lose connection with viewserver
+		reply.Err = ErrWrongServer
+		return nil
+	}
+
+	if pb.view.Primary == pb.me {
+		pb.mu.Lock()
+		reply.Err = OK
+		delete(pb.db, args.Key)
+		// send to backup
+		for i := 0; i < viewservice.BackupNums; i++ {
+			ok := false
+			for !ok {
+				if pb.view.Backup[i] == "" {
+					break // no backup
+				}
+				ok = call(pb.view.Backup[i], "PBServer.ForwardDelete", args, reply)
+			}
+		}
+		pb.mu.Unlock()
+	} else {
+		// fmt.Println("I am not primary")
+		ok := false
+		for !ok {
+			ok = call(pb.view.Primary, "PBServer.Remove", args, reply)
+		}
+	}
+	return nil
+}
+
+// forward to backup
+func (pb *PBServer) ForwardDelete(args *DeleteArgs, reply *DeleteReply) error {
+	pb.mu.Lock()
+	reply.Err = OK
+	delete(pb.db, args.Key)
+	pb.mu.Unlock()
+	return nil
+}
+
 // Receive DB
 func (pb *PBServer) MoveDB(args *MoveDBArgs, reply *MoveDBReply) error {
 	reply.Err = OK

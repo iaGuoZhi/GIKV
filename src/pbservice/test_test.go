@@ -16,6 +16,7 @@ import (
 
 func check(ck *Clerk, key string, value string) {
 	v := ck.Get(key)
+
 	if v != value {
 		log.Fatalf("Get(%v) -> %v, expected %v", key, v, value)
 	}
@@ -32,6 +33,58 @@ func port(tag string, host int) string {
 	return s
 }
 
+func TestFunc(t *testing.T) {
+	runtime.GOMAXPROCS(4)
+
+	tag := "func"
+	vshost := port(tag+"v", 1)
+	vs := viewservice.StartServer(vshost)
+	time.Sleep(time.Second)
+	vck := viewservice.MakeClerk("", vshost)
+	ck := MakeClerk(vshost, "")
+	fmt.Printf("Test: Get,Put and Delete ...\n")
+	const nservers = 3
+	var sa [nservers]*PBServer
+	for i := 0; i < nservers; i++ {
+		sa[i] = StartServer(vshost, port(tag, i+1))
+	}
+
+	for iters := 0; iters < viewservice.DeadPings*2; iters++ {
+		view, _ := vck.Get()
+		if view.Primary != "" && view.Backup[0] != "" && view.Backup[1] != "" {
+			break
+		}
+		time.Sleep(viewservice.PingInterval)
+	}
+
+	// give p+b time to ack, initialize
+	time.Sleep(viewservice.PingInterval * viewservice.DeadPings)
+
+	// put
+	ck.Put("001", "0001")
+	ck.Put("002", "0002")
+
+	// get
+	check(ck, "001", "0001")
+	check(ck, "002", "0002")
+	check(ck, "003", KeyInexsitence)
+
+	// delete
+	ck.Delete("001")
+	check(ck, "001", KeyInexsitence)
+	ck.Delete("006") //delete inexsitent key
+	ck.Put("001", "0001+")
+	check(ck, "001", "0001+")
+
+	fmt.Printf("  ... Passed\n")
+
+	for i := 0; i < nservers; i++ {
+		sa[i].kill()
+	}
+	time.Sleep(time.Second)
+	vs.Kill()
+	time.Sleep(time.Second)
+}
 func TestBasicFail(t *testing.T) {
 	runtime.GOMAXPROCS(4)
 
@@ -149,8 +202,10 @@ func TestBasicFail(t *testing.T) {
 	time.Sleep(1 * time.Second)
 	get_done := false
 	go func() {
-		ck.Get("1")
-		get_done = true
+		res := ck.Get("1")
+		if res != KeyInexsitence {
+			get_done = true
+		}
 	}()
 	time.Sleep(2 * time.Second)
 	if get_done {

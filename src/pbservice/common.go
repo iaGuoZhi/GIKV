@@ -4,6 +4,7 @@ const (
 	OK             = "OK"
 	ErrNoKey       = "ErrNoKey"
 	ErrWrongServer = "ErrWrongServer"
+	KeyInexsitence = "___KEY__INEXISTENCE"
 )
 
 type Err string
@@ -14,6 +15,14 @@ type PutArgs struct {
 }
 
 type PutReply struct {
+	Err Err
+}
+
+type DeleteArgs struct {
+	Key string
+}
+
+type DeleteReply struct {
 	Err Err
 }
 
