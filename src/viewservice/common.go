@@ -2,8 +2,11 @@ package viewservice
 
 import "time"
 
-// in my implemention, two backup for every primary
+// BackupNums ... in my implemention, two backup for every primary
 const BackupNums = 2
+
+// ServerNums ... total server number is 3
+const ServerNums = 3
 
 //
 // This is a non-replicated view service for a simple
