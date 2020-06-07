@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"path/filepath"
+	"pbservice"
 	"sync"
 	"time"
 
@@ -223,4 +224,18 @@ func (master *Master) handleMasterDownEvt(ch <-chan zk.Event) {
 		log.Println("handleMasterDownEvt: ", e)
 		master.onMasterDown()
 	}(ch)
+}
+
+func (master *Master) createWorkers() {
+	worker1 := StartWorker(1)
+
+	args := pbservice.PutArgs{Key: "hello", Value: "world"}
+	reply := pbservice.PutReply{}
+	call(worker1.me, "Worker.Put", args, &reply)
+
+	getArgs := pbservice.GetArgs{Key: "hello"}
+	getReply := pbservice.GetReply{}
+	call(worker1.me, "Worker.Get", getArgs, &getReply)
+
+	fmt.Println(getReply.Value)
 }

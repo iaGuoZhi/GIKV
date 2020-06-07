@@ -3,35 +3,34 @@ package msservice
 import (
 	"fmt"
 	"log"
+	"math/rand"
+	"net"
 	"net/rpc"
 	"os"
 	"pbservice"
 	"strconv"
+	"sync"
+	"syscall"
 	"time"
 	"viewservice"
 )
 
 var runningWorksNumber map[int]bool
 
-// Clerk ... viewservice.Clerk's wrap
-type Clerk struct {
-	vs *viewservice.Clerk
-}
-
-// MakeClerk ... makeclerk
-func MakeClerk(vshost string, me string) *Clerk {
-	ck := new(Clerk)
-	ck.vs = viewservice.MakeClerk(me, vshost)
-	return ck
-}
-
 // Worker ... work metadata
 type Worker struct {
 	vshost  string
 	vs      *viewservice.ViewServer
 	vck     *viewservice.Clerk
-	ck      *Clerk
 	servers [viewservice.ServerNums]*pbservice.PBServer
+
+	dead       bool // for testing
+	unreliable bool // for testing
+
+	mu        sync.Mutex
+	l         net.Listener
+	connected bool
+	me        string
 }
 
 func port(tag string, host int) string {
@@ -83,25 +82,78 @@ func (worker *Worker) initWorker() {
 }
 
 // StartWorker ... call by master, worker.vshost should be set before
-func (worker *Worker) StartWorker(workerNumber int) error {
+func StartWorker(workerNumber int) *Worker {
 
 	if isrunning, existed := runningWorksNumber[workerNumber]; existed && isrunning {
 		log.Fatalf("worker number has been used")
 	}
+	//runningWorksNumber[workerNumber] = true
 
+	worker := new(Worker)
+
+	// view server
 	worker.vshost = port("viewserver", workerNumber)
 	worker.vs = viewservice.StartServer(worker.vshost)
 	time.Sleep(time.Second)
 
+	// db servers
 	worker.vck = viewservice.MakeClerk("", worker.vshost)
-	worker.ck = MakeClerk(worker.vshost, "")
 	for i := 0; i < viewservice.ServerNums; i++ {
 		worker.servers[i] = pbservice.StartServer(worker.vshost, port("worker-node"+string(workerNumber), i+1))
 	}
-	runningWorksNumber[workerNumber] = true
+
+	worker.dead = false
+	worker.connected = true
+	worker.unreliable = false
+
+	// worker rpc
+	worker.me = port("worker", workerNumber)
+	rpcs := rpc.NewServer()
+	rpcs.Register(worker)
+	os.Remove(worker.me)
+	l, err1 := net.Listen("unix", worker.me)
+	if err1 != nil {
+		log.Fatal("listen error: ", err1)
+	}
+	worker.l = l
 
 	fmt.Printf("worker %d start\n", workerNumber)
-	return nil
+
+	go func() {
+		for worker.dead == false {
+			conn, err := worker.l.Accept()
+			if err == nil && worker.dead == false {
+				if worker.unreliable && (rand.Int63()%1000) < 100 {
+					// discard the request.
+					conn.Close()
+				} else if worker.unreliable && (rand.Int63()%1000) < 200 {
+					// process the request but force discard of reply.
+					c1 := conn.(*net.UnixConn)
+					f, _ := c1.File()
+					err := syscall.Shutdown(int(f.Fd()), syscall.SHUT_WR)
+					if err != nil {
+						fmt.Printf("shutdown: %v\n", err)
+					}
+					go rpcs.ServeConn(conn)
+				} else {
+					go rpcs.ServeConn(conn)
+				}
+			} else if err == nil {
+				conn.Close()
+			}
+			if err != nil && worker.dead == false {
+				fmt.Printf("Worker(%v) accept: %v\n", worker.me, err.Error())
+				worker.kill()
+			}
+		}
+	}()
+
+	return worker
+}
+
+func (worker *Worker) kill() {
+	worker.dead = true
+	worker.l.Close()
 }
 
 //
@@ -111,10 +163,13 @@ func (worker *Worker) StartWorker(workerNumber int) error {
 // primary replies with the value or the primary
 // says the key doesn't exist (has never been Put().
 //
-func (worker *Worker) Get(key string) string {
+func (worker *Worker) Get(args *pbservice.GetArgs, reply *pbservice.GetReply) error {
 	// Your code here.
-	args := &pbservice.GetArgs{Key: key}
-	var reply pbservice.GetReply
+	if !worker.connected {
+		reply.Err = pbservice.ErrWrongServer
+		return nil
+	}
+
 	reply.Err = pbservice.ErrWrongServer
 
 	ok := false
@@ -131,21 +186,19 @@ func (worker *Worker) Get(key string) string {
 
 		//key not exist
 		if reply.Err == pbservice.ErrNoKey {
-			return pbservice.KeyInexsitence
+			reply.Value = pbservice.KeyInexsitence
 		}
 		time.Sleep(viewservice.PingInterval)
 	}
 
-	return reply.Value
+	return nil
 }
 
 //
 // tell the primary to update key's value.
 // must keep trying until it succeeds.
 //
-func (worker *Worker) Put(key string, value string) {
-	args := &pbservice.PutArgs{Key: key, Value: value}
-	var reply pbservice.PutReply
+func (worker *Worker) Put(args *pbservice.PutArgs, reply *pbservice.PutReply) error {
 
 	ok := false
 	for !ok {
@@ -163,17 +216,14 @@ func (worker *Worker) Put(key string, value string) {
 	if reply.Err != pbservice.OK {
 		fmt.Println(reply.Err)
 	}
+	return nil
 }
 
 //
 // tell the primary to delete key from db
 // must keep trying until it succeeds.
 //
-func (worker *Worker) Delete(key string) {
-	// Your code here.
-	args := &pbservice.DeleteArgs{Key: key}
-	var reply pbservice.DeleteReply
-
+func (worker *Worker) Delete(args *pbservice.DeleteArgs, reply *pbservice.DeleteReply) error {
 	ok := false
 	for !ok {
 		vok := false
@@ -190,4 +240,5 @@ func (worker *Worker) Delete(key string) {
 	if reply.Err != pbservice.OK {
 		fmt.Println(reply.Err)
 	}
+	return nil
 }

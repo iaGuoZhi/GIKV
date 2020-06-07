@@ -3,7 +3,6 @@ package msservice
 import (
 	"fmt"
 	"log"
-	"net"
 	"testing"
 	"time"
 
@@ -52,8 +51,10 @@ func TestBasic(t *testing.T) {
 	log.Println("pass TestBasic")
 	fmt.Println()
 	time.Sleep(2 * time.Second)
+	masters[0].createWorkers()
 }
 
+/*
 func TestSync(t *testing.T) {
 	masters := [3]Master{}
 	processName := [3]string{"p1", "p2", "p3"}
@@ -76,4 +77,4 @@ func TestSync(t *testing.T) {
 	}()
 	time.Sleep(time.Hour)
 	log.Println("pass TestSync")
-}
+}*/
