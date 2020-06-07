@@ -16,13 +16,13 @@ func check(target string, got string) {
 	}
 }
 func TestBasic(t *testing.T) {
-	zkConns := [3]Myconn{}
+	masters := [3]Master{}
 	processName := [3]string{"p1", "p2", "p3"}
 
 	for i := 0; i < 3; i++ {
-		zkConns[i].nodeName = "myconn"
-		zkConns[i].sn = processName[i]
-		zkConns[i].init()
+		masters[i].nodeName = "myconn"
+		masters[i].sn = processName[i]
+		masters[i].init()
 	}
 
 	conn, _, err0 := zk.Connect([]string{"127.0.0.1"}, time.Second)
@@ -55,13 +55,13 @@ func TestBasic(t *testing.T) {
 }
 
 func TestSync(t *testing.T) {
-	zkConns := [3]Myconn{}
+	masters := [3]Master{}
 	processName := [3]string{"p1", "p2", "p3"}
 
 	for i := 0; i < 3; i++ {
-		zkConns[i].nodeName = "myconn"
-		zkConns[i].sn = processName[i]
-		zkConns[i].init()
+		masters[i].nodeName = "myconn"
+		masters[i].sn = processName[i]
+		masters[i].init()
 	}
 
 	// write data to MasterPort

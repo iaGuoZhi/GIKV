@@ -52,8 +52,8 @@ func (slavemgr *slaveMgr) AddConn(conn *net.TCPConn) int {
 	return slavemgr.sessid
 }
 
-// Myconn ... tbd
-type Myconn struct {
+// Master ... tbd
+type Master struct {
 	nodeName string
 	sn       string
 	newName  string
@@ -74,44 +74,44 @@ var masterListenPort = "8010"
 var packetSizeMax uint32 = 1024
 var msgPoolSize uint32 = 102400
 
-func (myconn *Myconn) getProcessNodeName(val string) string {
-	return fmt.Sprintf("/%s/%s/%s", myconn.nodeName, processZkNode, val)
+func (master *Master) getProcessNodeName(val string) string {
+	return fmt.Sprintf("/%s/%s/%s", master.nodeName, processZkNode, val)
 }
 
-func (myconn *Myconn) getNodeName(val string) string {
-	return fmt.Sprintf("/%s", filepath.Join(myconn.nodeName, val))
+func (master *Master) getNodeName(val string) string {
+	return fmt.Sprintf("/%s", filepath.Join(master.nodeName, val))
 }
 
-func (myconn *Myconn) init() {
+func (master *Master) init() {
 	acls := zk.WorldACL(zk.PermAll)
 
 	c, _, err0 := zk.Connect([]string{"127.0.0.1"}, time.Second)
 	if err0 != nil {
 		panic(err0)
 	}
-	myconn.coon = c
-	myconn.masterPort = masterListenPort
+	master.coon = c
+	master.masterPort = masterListenPort
 	//check parent node exist
-	exists, _, err1 := myconn.coon.Exists(fmt.Sprintf("/%s", myconn.nodeName))
+	exists, _, err1 := master.coon.Exists(fmt.Sprintf("/%s", master.nodeName))
 	if err1 != nil {
 		panic(err1)
 	}
 	if !exists {
-		myconn.coon.Create(fmt.Sprintf("/%s", myconn.nodeName), []byte{}, 0, acls)
+		master.coon.Create(fmt.Sprintf("/%s", master.nodeName), []byte{}, 0, acls)
 	}
 
 	//try get master
-	myconn.tryMaster()
+	master.tryMaster()
 
 	//create own temp node
-	processNode := myconn.getProcessNodeName(myconn.sn)
+	processNode := master.getProcessNodeName(master.sn)
 	log.Println("node now is:", processNode)
-	exists, _, err1 = myconn.coon.Exists(processNode)
+	exists, _, err1 = master.coon.Exists(processNode)
 	if err1 != nil {
 		panic(err1)
 	}
 	if !exists {
-		ret, err2 := myconn.coon.Create(processNode, []byte{}, zk.FlagEphemeral, acls)
+		ret, err2 := master.coon.Create(processNode, []byte{}, zk.FlagEphemeral, acls)
 		if err2 != nil {
 			panic(err2)
 		}
@@ -119,40 +119,40 @@ func (myconn *Myconn) init() {
 	}
 }
 
-func (myconn *Myconn) tryMaster() {
+func (master *Master) tryMaster() {
 	acls := zk.WorldACL(zk.PermAll)
-	masterNode := myconn.getNodeName(masterZkNode)
+	masterNode := master.getNodeName(masterZkNode)
 
-	_, err1 := myconn.coon.Create(masterNode, []byte(myconn.masterPort), zk.FlagEphemeral, acls)
+	_, err1 := master.coon.Create(masterNode, []byte(master.masterPort), zk.FlagEphemeral, acls)
 	if err1 == nil {
 		log.Println("now process is master")
-		myconn.bmaster = true
-		myconn.initMaster()
+		master.bmaster = true
+		master.initMaster()
 	} else {
 		//panic(err1)
-		myconn.bmaster = false
-		masterByteInfo, _, err := myconn.coon.Get(masterNode)
+		master.bmaster = false
+		masterByteInfo, _, err := master.coon.Get(masterNode)
 		if err != nil {
 			log.Println("fatal err:", err)
 		}
 		log.Println("current process is slave, master info: ", string(masterByteInfo))
-		myconn.initSlave2MasterConn(string(masterByteInfo))
+		master.initSlave2MasterConn(string(masterByteInfo))
 
 		// add watch on master process
-		exists, _, evtCh, err0 := myconn.coon.ExistsW(masterNode)
+		exists, _, evtCh, err0 := master.coon.ExistsW(masterNode)
 		if err0 != nil || !exists {
-			myconn.tryMaster()
+			master.tryMaster()
 		} else {
-			myconn.handleMasterDownEvt(evtCh)
+			master.handleMasterDownEvt(evtCh)
 		}
 	}
 }
 
-func (myconn *Myconn) initMaster() {
-	myconn.slavemgr = &slaveMgr{connMap: make(map[int]*net.TCPConn), sessid: 0}
+func (master *Master) initMaster() {
+	master.slavemgr = &slaveMgr{connMap: make(map[int]*net.TCPConn), sessid: 0}
 
 	// listen for slaves
-	tcpAddr, err1 := net.ResolveTCPAddr("tcp4", ":"+myconn.masterPort)
+	tcpAddr, err1 := net.ResolveTCPAddr("tcp4", ":"+master.masterPort)
 	if err1 != nil {
 		panic(err1)
 	}
@@ -167,16 +167,16 @@ func (myconn *Myconn) initMaster() {
 			if err3 != nil {
 				panic(err3)
 			}
-			sessid := myconn.slavemgr.AddConn(tcpConn)
+			sessid := master.slavemgr.AddConn(tcpConn)
 			log.Println(fmt.Sprintf("slave client:%s has connected! sessid: %d\n", tcpConn.RemoteAddr().String(), sessid))
 			defer tcpConn.Close()
 		}
 	}()
 }
 
-func (myconn *Myconn) initSlave2MasterConn(master string) {
+func (master *Master) initSlave2MasterConn(masterPort string) {
 	var err1 error
-	myconn.slv2masterConn, err1 = net.Dial("tcp", ":"+master)
+	master.slv2masterConn, err1 = net.Dial("tcp", ":"+masterPort)
 	if err1 != nil {
 		log.Println("initSlave2MasterConn failed: ", err1)
 		return
@@ -185,42 +185,42 @@ func (myconn *Myconn) initSlave2MasterConn(master string) {
 	go func() {
 		for {
 			hsize := make([]byte, 4)
-			if _, err := io.ReadFull(myconn.slv2masterConn, hsize); err != nil {
+			if _, err := io.ReadFull(master.slv2masterConn, hsize); err != nil {
 				log.Println(err)
-				myconn.slv2masterConn.Close()
-				myconn.slv2masterConn = nil
+				master.slv2masterConn.Close()
+				master.slv2masterConn = nil
 				return
 			}
 
 			hsval := binary.LittleEndian.Uint32(hsize)
 			if hsval > packetSizeMax {
 				log.Println("packet size:", hsval, ",exceed max val:", packetSizeMax)
-				myconn.slv2masterConn.Close()
+				master.slv2masterConn.Close()
 				return
 			}
 
 			hbuf := make([]byte, hsval)
-			if _, err := io.ReadFull(myconn.slv2masterConn, hbuf); err != nil {
+			if _, err := io.ReadFull(master.slv2masterConn, hbuf); err != nil {
 				log.Println("read buf err:", err)
-				myconn.slv2masterConn.Close()
-				myconn.slv2masterConn = nil
+				master.slv2masterConn.Close()
+				master.slv2masterConn = nil
 				return
 			}
 			hbufstr := string(hbuf)
-			myconn.msgQueue <- hbufstr
-			log.Println("push into queue:", hbufstr, ", size:", len(myconn.msgQueue))
+			master.msgQueue <- hbufstr
+			log.Println("push into queue:", hbufstr, ", size:", len(master.msgQueue))
 		}
 	}()
 }
 
-func (myconn *Myconn) onMasterDown() {
-	myconn.tryMaster()
+func (master *Master) onMasterDown() {
+	master.tryMaster()
 }
 
-func (myconn *Myconn) handleMasterDownEvt(ch <-chan zk.Event) {
+func (master *Master) handleMasterDownEvt(ch <-chan zk.Event) {
 	go func(chv <-chan zk.Event) {
 		e := <-chv
 		log.Println("handleMasterDownEvt: ", e)
-		myconn.onMasterDown()
+		master.onMasterDown()
 	}(ch)
 }
