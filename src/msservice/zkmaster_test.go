@@ -14,7 +14,7 @@ func check(target string, got string) {
 		log.Fatalf("Get(%v), expected %v", got, target)
 	}
 }
-func TestBasic(t *testing.T) {
+func TestZkBasic(t *testing.T) {
 	masters := [3]Master{}
 	processName := [3]string{"p1", "p2", "p3"}
 
@@ -50,31 +50,4 @@ func TestBasic(t *testing.T) {
 	}
 	log.Println("pass TestBasic")
 	fmt.Println()
-	time.Sleep(2 * time.Second)
-	masters[0].createWorkers()
 }
-
-/*
-func TestSync(t *testing.T) {
-	masters := [3]Master{}
-	processName := [3]string{"p1", "p2", "p3"}
-
-	for i := 0; i < 3; i++ {
-		masters[i].nodeName = "myconn"
-		masters[i].sn = processName[i]
-		masters[i].init()
-	}
-
-	// write data to MasterPort
-	go func() {
-		conn, err := net.Dial("tcp", ":8010")
-		if err != nil {
-			panic(err)
-		}
-		conn.Write([]byte("12"))
-		fmt.Printf("12")
-
-	}()
-	time.Sleep(time.Hour)
-	log.Println("pass TestSync")
-}*/

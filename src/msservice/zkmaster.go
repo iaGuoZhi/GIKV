@@ -7,9 +7,11 @@ import (
 	"log"
 	"net"
 	"path/filepath"
-	"pbservice"
 	"sync"
 	"time"
+	"viewservice"
+
+	"zkservice"
 
 	"github.com/samuel/go-zookeeper/zk"
 )
@@ -60,6 +62,11 @@ type Master struct {
 	newName  string
 	bmaster  bool
 	coon     *zk.Conn
+
+	// worker message
+	primaryRPCAddress string
+	vshost            string
+	vck               *viewservice.Clerk
 
 	// for data sync
 	msgQueue       chan string
@@ -226,16 +233,29 @@ func (master *Master) handleMasterDownEvt(ch <-chan zk.Event) {
 	}(ch)
 }
 
-func (master *Master) createWorkers() {
-	worker1 := StartWorker(1)
+func (master *Master) getWorkInfo() {
+	conn, _, err0 := zk.Connect([]string{zkservice.ZkServer}, time.Second)
+	if err0 != nil {
+		panic(err0)
+	}
 
-	args := pbservice.PutArgs{Key: "hello", Value: "world"}
-	reply := pbservice.PutReply{}
-	call(worker1.me, "Worker.Put", args, &reply)
+	// get primary rpc address
+	address, _, err1 := conn.Get(zkservice.WorkerPrimayPath)
+	if err1 != nil {
+		panic(err1)
+	}
 
-	getArgs := pbservice.GetArgs{Key: "hello"}
-	getReply := pbservice.GetReply{}
-	call(worker1.me, "Worker.Get", getArgs, &getReply)
+	master.primaryRPCAddress = string(address)
 
-	fmt.Println(getReply.Value)
+	vshost, _, err2 := conn.Get(zkservice.WorkerViewServerPath)
+	if err2 != nil {
+		panic(err2)
+	}
+
+	master.vshost = string(vshost)
+	master.vck = viewservice.MakeClerk("", master.vshost)
+}
+
+func (master *Master) updateWorkInfo() {
+
 }
