@@ -39,10 +39,10 @@ func TestKvBasic(t *testing.T) {
 
 	// create master
 	masters := [3]Master{}
-	processName := [3]string{"p1", "p2", "p3"}
+	processName := [3]int{1, 2, 3}
 
 	for i := 0; i < 3; i++ {
-		masters[i].sn = processName[i]
+		masters[i].label = processName[i]
 		masters[i].init()
 	}
 

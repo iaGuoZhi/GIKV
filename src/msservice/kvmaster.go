@@ -8,6 +8,9 @@ import (
 	"strconv"
 	"time"
 	"viewservice"
+	"zkservice"
+
+	"github.com/samuel/go-zookeeper/zk"
 )
 
 func port(tag string, host int) string {
@@ -36,6 +39,29 @@ func call(srv string, rpcname string,
 
 	// fmt.Println(err)
 	return false
+}
+
+func (master *Master) getWorkInfo() {
+	conn, _, err0 := zk.Connect([]string{zkservice.ZkServer}, time.Second)
+	if err0 != nil {
+		panic(err0)
+	}
+
+	// get primary rpc address
+	address, _, err1 := conn.Get(zkservice.WorkerPrimayPath)
+	if err1 != nil {
+		panic(err1)
+	}
+
+	master.primaryRPCAddress = string(address)
+
+	vshost, _, err2 := conn.Get(zkservice.WorkerViewServerPath)
+	if err2 != nil {
+		panic(err2)
+	}
+
+	master.vshost = string(vshost)
+	master.vck = viewservice.MakeClerk("", master.vshost)
 }
 
 //

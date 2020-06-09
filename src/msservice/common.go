@@ -10,11 +10,19 @@ import (
 
 // Master ... tbd
 type Master struct {
-	nodeName string
-	sn       string
-	newName  string
-	bmaster  bool
-	conn     *zk.Conn
+	label   int
+	newName string
+	bmaster bool
+	conn    *zk.Conn
+
+	// for test
+	dead       bool
+	unreliable bool
+
+	// rpc
+	myRPCAddress string
+	l            net.Listener
+	mu           sync.Mutex
 
 	// worker message
 	primaryRPCAddress string
@@ -22,11 +30,11 @@ type Master struct {
 	vck               *viewservice.Clerk
 
 	// for data sync
-	connProxy      net.Conn
+	/*connProxy      net.Conn
 	msgQueue       chan string
 	masterPort     string
 	slavemgr       *slaveMgr
-	slv2masterConn net.Conn
+	slv2masterConn net.Conn*/
 }
 
 type slaveMgr struct {

@@ -5,6 +5,7 @@ import (
 	"log"
 	"testing"
 	"time"
+	"zkservice"
 
 	"github.com/samuel/go-zookeeper/zk"
 )
@@ -16,30 +17,28 @@ func check(target string, got string) {
 }
 func TestZkBasic(t *testing.T) {
 	masters := [3]Master{}
-	processName := [3]string{"p1", "p2", "p3"}
+	processName := [3]int{1, 2, 3}
 
 	for i := 0; i < 3; i++ {
-		masters[i].nodeName = "myconn"
-		masters[i].sn = processName[i]
+		masters[i].label = processName[i]
 		masters[i].init()
 	}
 
-	conn, _, err0 := zk.Connect([]string{"127.0.0.1"}, time.Second)
+	conn, _, err0 := zk.Connect([]string{zkservice.ZkServer}, time.Second)
 	if err0 != nil {
 		panic(err0)
 	}
 
 	// check master value
-	masterPath := string("/myconn/master")
-	masterValue, _, err1 := conn.Get(masterPath)
+	masterValue, _, err1 := conn.Get(zkservice.MasterPath)
 	if err1 != nil {
 		panic(err1)
 	}
 	log.Println(string(masterValue))
-	check("8010", string(masterValue))
+	fmt.Println(masters[0].myRPCAddress)
 
 	// check process list
-	processPath := string("/myconn/process_list")
+	processPath := string(zkservice.MasterProcessPath)
 	processs, _, err2 := conn.Children(processPath)
 	if err2 != nil {
 		panic(err2)
