@@ -42,12 +42,11 @@ func TestKvBasic(t *testing.T) {
 	processName := [3]string{"p1", "p2", "p3"}
 
 	for i := 0; i < 3; i++ {
-		masters[i].nodeName = "myconn"
 		masters[i].sn = processName[i]
 		masters[i].init()
 	}
 
-	conn, _, err0 := zk.Connect([]string{"127.0.0.1"}, time.Second)
+	conn, _, err0 := zk.Connect([]string{zkservice.ZkServer}, time.Second)
 	if err0 != nil {
 		panic(err0)
 	}

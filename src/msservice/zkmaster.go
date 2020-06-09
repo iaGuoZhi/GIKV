@@ -1,32 +1,20 @@
 package msservice
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"path/filepath"
-	"sync"
 	"time"
-	"viewservice"
 
+	"viewservice"
 	"zkservice"
 
 	"github.com/samuel/go-zookeeper/zk"
 )
-
-type slaveMgr struct {
-	connMap map[int]*net.TCPConn
-	sessid  int
-	sync.RWMutex
-}
-
-func (slavemgr *slaveMgr) RemConn(sessid int) {
-	slavemgr.Lock()
-	defer slavemgr.Unlock()
-	delete(slavemgr.connMap, sessid)
-}
 
 func (slavemgr *slaveMgr) BroadcastData(data []byte) {
 	slavemgr.Lock()
@@ -49,77 +37,43 @@ func (slavemgr *slaveMgr) BroadcastData(data []byte) {
 func (slavemgr *slaveMgr) AddConn(conn *net.TCPConn) int {
 	slavemgr.Lock()
 	defer slavemgr.Unlock()
-
 	slavemgr.sessid++
 	slavemgr.connMap[slavemgr.sessid] = conn
 	return slavemgr.sessid
 }
 
-// Master ... tbd
-type Master struct {
-	nodeName string
-	sn       string
-	newName  string
-	bmaster  bool
-	coon     *zk.Conn
-
-	// worker message
-	primaryRPCAddress string
-	vshost            string
-	vck               *viewservice.Clerk
-
-	// for data sync
-	msgQueue       chan string
-	masterPort     string
-	slavemgr       *slaveMgr
-	slv2masterConn net.Conn
-}
-
-var masterZkNode string = "master"
-var processZkNode string = "process_list"
-var masterListenPort = "8010"
-
-var packetSizeMax uint32 = 1024
-var msgPoolSize uint32 = 102400
-
-func (master *Master) getProcessNodeName(val string) string {
-	return fmt.Sprintf("/%s/%s/%s", master.nodeName, processZkNode, val)
-}
-
-func (master *Master) getNodeName(val string) string {
-	return fmt.Sprintf("/%s", filepath.Join(master.nodeName, val))
-}
-
 func (master *Master) init() {
 	acls := zk.WorldACL(zk.PermAll)
 
-	c, _, err0 := zk.Connect([]string{"127.0.0.1"}, time.Second)
+	c, _, err0 := zk.Connect([]string{zkservice.ZkServer}, time.Second)
 	if err0 != nil {
 		panic(err0)
 	}
-	master.coon = c
+	master.conn = c
 	master.masterPort = masterListenPort
-	//check parent node exist
-	exists, _, err1 := master.coon.Exists(fmt.Sprintf("/%s", master.nodeName))
-	if err1 != nil {
+	master.nodeName = zkservice.RootNode
+	//check root path exist
+	exists, _, err1 := master.conn.Exists(zkservice.RootPath)
+	if err1 != nil || exists == false {
 		panic(err1)
-	}
-	if !exists {
-		master.coon.Create(fmt.Sprintf("/%s", master.nodeName), []byte{}, 0, acls)
 	}
 
 	//try get master
 	master.tryMaster()
 
 	//create own temp node
-	processNode := master.getProcessNodeName(master.sn)
+	exists, _, err1 = master.conn.Exists(zkservice.MasterProcessPath)
+	if err1 != nil || exists == false {
+		panic(err1)
+	}
+	processNode := filepath.Join(zkservice.MasterProcessPath, master.sn)
 	log.Println("node now is:", processNode)
-	exists, _, err1 = master.coon.Exists(processNode)
+	exists, _, err1 = master.conn.Exists(processNode)
 	if err1 != nil {
 		panic(err1)
 	}
 	if !exists {
-		ret, err2 := master.coon.Create(processNode, []byte{}, zk.FlagEphemeral, acls)
+		ret, err2 := master.conn.Create(processNode, []byte{}, zk.FlagEphemeral, acls)
 		if err2 != nil {
 			panic(err2)
 		}
@@ -127,27 +81,43 @@ func (master *Master) init() {
 	}
 }
 
-func (master *Master) tryMaster() {
-	acls := zk.WorldACL(zk.PermAll)
-	masterNode := master.getNodeName(masterZkNode)
+func (master *Master) initType(bt []byte) {
+	// connect to proxy
+	if master.initProxyConn() == false {
+		log.Println("initType failed")
+		return
+	}
 
-	_, err1 := master.coon.Create(masterNode, []byte(master.masterPort), zk.FlagEphemeral, acls)
+	master.sendProxy(bt)
+}
+
+func (master *Master) tryMaster() {
+	if master.slv2masterConn != nil {
+		master.slv2masterConn.Close()
+	}
+
+	acls := zk.WorldACL(zk.PermAll)
+	masterNode := zkservice.MasterMasterNode
+
+	_, err1 := master.conn.Create(masterNode, []byte(master.masterPort), zk.FlagEphemeral, acls)
 	if err1 == nil {
 		log.Println("now process is master")
 		master.bmaster = true
+		master.initType([]byte("master"))
 		master.initMaster()
 	} else {
 		//panic(err1)
 		master.bmaster = false
-		masterByteInfo, _, err := master.coon.Get(masterNode)
+		masterByteInfo, _, err := master.conn.Get(masterNode)
 		if err != nil {
 			log.Println("fatal err:", err)
 		}
+		master.initType([]byte("slave"))
 		log.Println("current process is slave, master info: ", string(masterByteInfo))
 		master.initSlave2MasterConn(string(masterByteInfo))
 
 		// add watch on master process
-		exists, _, evtCh, err0 := master.coon.ExistsW(masterNode)
+		exists, _, evtCh, err0 := master.conn.ExistsW(masterNode)
 		if err0 != nil || !exists {
 			master.tryMaster()
 		} else {
@@ -221,6 +191,64 @@ func (master *Master) initSlave2MasterConn(masterPort string) {
 	}()
 }
 
+func (master *Master) initProxyConn() bool {
+	if master.connProxy != nil {
+		return true
+	}
+
+	var err1 error
+	master.connProxy, err1 = net.Dial("tcp", proxyAddr)
+	if err1 != nil {
+		log.Println("initProxyConn failed: ", err1)
+		return false
+	}
+
+	go func() {
+		for {
+			hsize := make([]byte, 4)
+			if _, err1 := io.ReadFull(master.connProxy, hsize); err1 != nil {
+				log.Println(err1)
+				master.connProxy.Close()
+				master.connProxy = nil
+				return
+			}
+
+			hsval := binary.LittleEndian.Uint32(hsize)
+			if hsval > packetSizeMax {
+				log.Println("packet size: ", hsval, ",exceed max val: ", packetSizeMax)
+				master.connProxy.Close()
+				master.connProxy = nil
+				return
+			}
+
+			hbuf := make([]byte, hsval)
+			if _, err2 := io.ReadFull(master.connProxy, hbuf); err2 != nil {
+				log.Println("read buf err: ", err2)
+				master.connProxy.Close()
+				master.connProxy = nil
+				return
+			}
+
+			hbufStr := string(hbuf)
+			master.msgQueue <- hbufStr
+			if master.bmaster {
+				master.slavemgr.BroadcastData(hbuf)
+				log.Println("push into slaves queue: ", hbufStr)
+			}
+			log.Println("push into queue: ", hbufStr, ", size: ", len(hbufStr))
+		}
+	}()
+
+	return true
+}
+
+func (master *Master) sendProxy(bt []byte) {
+	btOut := bytes.NewBuffer([]byte{})
+	binary.Write(btOut, binary.LittleEndian, uint32(len(bt)))
+	binary.Write(btOut, binary.LittleEndian, bt)
+	master.connProxy.Write(btOut.Bytes())
+}
+
 func (master *Master) onMasterDown() {
 	master.tryMaster()
 }
@@ -254,8 +282,4 @@ func (master *Master) getWorkInfo() {
 
 	master.vshost = string(vshost)
 	master.vck = viewservice.MakeClerk("", master.vshost)
-}
-
-func (master *Master) updateWorkInfo() {
-
 }
