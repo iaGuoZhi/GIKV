@@ -29,6 +29,7 @@ func (master *Master) init() {
 	if err1 != nil || exists == false {
 		panic(err1)
 	}
+
 	master.workers = make(map[int]Work)
 	master.dht = dhtservice.New()
 
