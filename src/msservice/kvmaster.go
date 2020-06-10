@@ -2,6 +2,7 @@ package msservice
 
 import (
 	"fmt"
+	"log"
 	"net/rpc"
 	"os"
 	"pbservice"
@@ -37,7 +38,6 @@ func call(srv string, rpcname string,
 		return true
 	}
 
-	// fmt.Println(err)
 	return false
 }
 
@@ -47,21 +47,40 @@ func (master *Master) getWorkInfo() {
 		panic(err0)
 	}
 
-	// get primary rpc address
-	address, _, err1 := conn.Get(zkservice.WorkerPrimayPath)
+	// get worker label
+	workerLabels, _, err1 := conn.Children(zkservice.WorkerPath)
 	if err1 != nil {
 		panic(err1)
 	}
+	// get each worker primary and viewserver address
+	for _, label := range workerLabels {
+		in, err2 := strconv.Atoi(label)
+		if err2 != nil {
+			log.Println("worker label to int fail")
+		}
+		primaryAddr, _, err3 := conn.Get(zkservice.GetWorkPrimayPath(in))
+		if err3 != nil {
+			panic(err3)
+		}
+		vhost, _, err4 := conn.Get(zkservice.GetWorkViewServerPath(in))
+		if err4 != nil {
+			panic(err4)
+		}
 
-	master.primaryRPCAddress = string(address)
-
-	vshost, _, err2 := conn.Get(zkservice.WorkerViewServerPath)
-	if err2 != nil {
-		panic(err2)
+		worker := master.workers[in]
+		worker.label = in
+		worker.primaryRPCAddress = string(primaryAddr)
+		worker.vshost = string(vhost)
+		worker.vck = viewservice.MakeClerk("", worker.vshost)
+		master.workers[in] = worker
 	}
+}
 
-	master.vshost = string(vshost)
-	master.vck = viewservice.MakeClerk("", master.vshost)
+func (master *Master) initDht() {
+	for k := range master.workers {
+		lableStr := strconv.Itoa(k)
+		master.dht.Add(lableStr)
+	}
 }
 
 //
@@ -75,12 +94,23 @@ func (master *Master) Get(args *pbservice.GetArgs, reply *pbservice.GetReply) er
 
 	reply.Err = pbservice.ErrWrongServer
 
+	workerLabelStr, err1 := master.dht.Get(args.Key)
+	if err1 != nil {
+		panic(err1)
+	}
+	log.Printf("%s => %s\n", args.Key, workerLabelStr)
+
+	workerLable, err2 := strconv.Atoi(workerLabelStr)
+	if err2 != nil {
+		panic(err2)
+	}
+
 	ok := false
 	for !ok || reply.Err != pbservice.OK {
 		vok := false
 		var view viewservice.View
 		for !vok {
-			view, vok = master.vck.Get()
+			view, vok = master.workers[workerLable].vck.Get()
 		}
 		srv := view.Primary
 		if srv != "" {
@@ -103,12 +133,23 @@ func (master *Master) Get(args *pbservice.GetArgs, reply *pbservice.GetReply) er
 //
 func (master *Master) Put(args *pbservice.PutArgs, reply *pbservice.PutReply) error {
 
+	workerLabelStr, err1 := master.dht.Get(args.Key)
+	if err1 != nil {
+		panic(err1)
+	}
+	log.Printf("%s => %s\n", args.Key, workerLabelStr)
+
+	workerLable, err2 := strconv.Atoi(workerLabelStr)
+	if err2 != nil {
+		panic(err2)
+	}
+
 	ok := false
 	for !ok {
 		vok := false
 		var view viewservice.View
 		for !vok {
-			view, vok = master.vck.Get()
+			view, vok = master.workers[workerLable].vck.Get()
 		}
 		srv := view.Primary
 		if srv != "" {
@@ -127,12 +168,23 @@ func (master *Master) Put(args *pbservice.PutArgs, reply *pbservice.PutReply) er
 // must keep trying until it succeeds.
 //
 func (master *Master) Delete(args *pbservice.DeleteArgs, reply *pbservice.DeleteReply) error {
+	workerLabelStr, err1 := master.dht.Get(args.Key)
+	if err1 != nil {
+		panic(err1)
+	}
+	log.Printf("%s => %s\n", args.Key, workerLabelStr)
+
+	workerLable, err2 := strconv.Atoi(workerLabelStr)
+	if err2 != nil {
+		panic(err2)
+	}
+
 	ok := false
 	for !ok {
 		vok := false
 		var view viewservice.View
 		for !vok {
-			view, vok = master.vck.Get()
+			view, vok = master.workers[workerLable].vck.Get()
 		}
 		srv := view.Primary
 		if srv != "" {

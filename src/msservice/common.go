@@ -1,12 +1,20 @@
 package msservice
 
 import (
+	"dhtservice"
 	"net"
 	"sync"
 	"viewservice"
 
 	"github.com/samuel/go-zookeeper/zk"
 )
+
+type Work struct {
+	label             int
+	primaryRPCAddress string
+	vshost            string
+	vck               *viewservice.Clerk
+}
 
 // Master ... tbd
 type Master struct {
@@ -24,10 +32,17 @@ type Master struct {
 	l            net.Listener
 	mu           sync.Mutex
 
-	// worker message
+	// backups
+	backupsRPCAddress map[int]string
 	primaryRPCAddress string
 	vshost            string
 	vck               *viewservice.Clerk
+
+	// worker message
+	workers map[int]Work
+
+	// for distributed hash table
+	dht *dhtservice.Consistent
 
 	// for data sync
 	/*connProxy      net.Conn

@@ -1,6 +1,7 @@
 package msservice
 
 import (
+	"dhtservice"
 	"fmt"
 	"log"
 	"math/rand"
@@ -28,6 +29,14 @@ func (master *Master) init() {
 	if err1 != nil || exists == false {
 		panic(err1)
 	}
+	master.workers = make(map[int]Work)
+	master.dht = dhtservice.New()
+
+	// getWorkInfo
+	master.getWorkInfo()
+
+	// init distributed hash table
+	master.initDht()
 
 	// start rpc server
 	master.startServer()
@@ -49,6 +58,12 @@ func (master *Master) tryMaster() {
 		master.initMaster()
 	} else {
 		master.bmaster = false
+		// create slave node
+		slaveNodePath := filepath.Join(zkservice.MasterSlavePath, strconv.Itoa(master.label))
+		_, err2 := master.conn.Create(slaveNodePath, []byte(master.myRPCAddress), zk.FlagEphemeral, acls)
+		if err2 != nil {
+			log.Println("create zk slave node fail path: ", slaveNodePath)
+		}
 		masterByteInfo, _, err := master.conn.Get(zkservice.MasterPath)
 		if err != nil {
 			log.Println("fatal err:", err)

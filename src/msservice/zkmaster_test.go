@@ -16,6 +16,9 @@ func check(target string, got string) {
 	}
 }
 func TestZkBasic(t *testing.T) {
+	// wait for znode in other testcase dead
+	time.Sleep(time.Duration(2) * time.Second)
+
 	masters := [3]Master{}
 	processName := [3]int{1, 2, 3}
 
@@ -49,4 +52,5 @@ func TestZkBasic(t *testing.T) {
 	}
 	log.Println("pass TestBasic")
 	fmt.Println()
+	time.Sleep(time.Hour)
 }

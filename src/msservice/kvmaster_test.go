@@ -2,6 +2,7 @@ package msservice
 
 import (
 	"fmt"
+	"log"
 	"pbservice"
 	"testing"
 	"time"
@@ -11,7 +12,7 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 )
 
-func TestKvBasic(t *testing.T) {
+func TestMultiMasterSingleWorker(t *testing.T) {
 	// create worker
 
 	vshost := port("viewserver", 1)
@@ -26,13 +27,19 @@ func TestKvBasic(t *testing.T) {
 		panic(err1)
 	}
 
+	// create worker parent path
+	err1 = zkservice.CreateWorkParentPath(1, conn)
+	if err1 != nil {
+		panic(err1)
+	}
+
 	var acls = zk.WorldACL(zk.PermAll)
-	_, err2 := conn.Create(zkservice.WorkerViewServerPath, []byte(vshost), zk.FlagEphemeral, acls)
+	_, err2 := conn.Create(zkservice.GetWorkViewServerPath(1), []byte(vshost), 0, acls) //persistent znode
 	if err2 != nil {
 		panic(err2)
 	}
 
-	_, err3 := conn.Create(zkservice.WorkerPrimayPath, []byte(primaryhost), zk.FlagEphemeral, acls)
+	_, err3 := conn.Create(zkservice.GetWorkPrimayPath(1), []byte(primaryhost), 0, acls)
 	if err3 != nil {
 		panic(err3)
 	}
@@ -46,13 +53,6 @@ func TestKvBasic(t *testing.T) {
 		masters[i].init()
 	}
 
-	conn, _, err0 := zk.Connect([]string{zkservice.ZkServer}, time.Second)
-	if err0 != nil {
-		panic(err0)
-	}
-
-	masters[0].getWorkInfo()
-
 	args := pbservice.PutArgs{Key: "hello", Value: "world"}
 	reply := pbservice.PutReply{}
 	masters[0].Put(&args, &reply)
@@ -61,7 +61,11 @@ func TestKvBasic(t *testing.T) {
 	getReply := pbservice.GetReply{}
 	masters[0].Get(&getArgs, &getReply)
 
-	fmt.Println(getReply.Value)
+	log.Println(getReply.Value)
+	if getReply.Value != "world" {
+		log.Println("get value incorect")
+	}
 
 	fmt.Println("TestKvBasic Pass")
+	fmt.Println()
 }
