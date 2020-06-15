@@ -107,6 +107,8 @@ func (master *Master) AddWorker(args *AddWorkerArgs, reply *AddWorkerReply) erro
 	//add to consistent
 	master.consistent.Add(strconv.Itoa(args.label))
 
+	//sync to slave node
+	master.syncAddWorker(args, reply)
 	reply.err = OK
 	return nil
 }

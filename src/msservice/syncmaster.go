@@ -2,15 +2,17 @@ package msservice
 
 import (
 	"log"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"viewservice"
 	"zkservice"
 )
 
+// SlaveAddWorker ... slave's addWorker func, used to sync data
 func (master *Master) SlaveAddWorker(args *AddWorkerArgs, reply *AddWorkerReply) error {
 
-	// check current master is doing master job now or not
+	// check current master is doing slave job now or not
 	byteInfo, _, err0 := master.conn.Get(zkservice.MasterMasterPath)
 	if err0 != nil {
 		reply.err = ErrOther
@@ -62,5 +64,20 @@ func (master *Master) SlaveAddWorker(args *AddWorkerArgs, reply *AddWorkerReply)
 }
 
 func (master *Master) syncAddWorker(args *AddWorkerArgs, reply *AddWorkerReply) error {
+	slaves, _, err1 := master.conn.Children(zkservice.MasterSlavePath)
+	if err1 != nil {
+		panic(err1)
+	}
 
+	for _, slave := range slaves {
+		slavePath := filepath.Join(zkservice.MasterSlavePath, slave)
+		slaveRPCAddress, _, err2 := master.conn.Get(slavePath)
+		if err2 != nil {
+			panic(err2)
+		}
+
+		call(string(slaveRPCAddress), "Master.SlaveAddWorker", args, reply)
+	}
+
+	return nil
 }

@@ -53,9 +53,6 @@ type Master struct {
 	l            net.Listener
 	mu           sync.Mutex
 
-	// backups
-	backupsRPCAddress map[int]string
-
 	// worker message
 	workers map[int]Work
 
