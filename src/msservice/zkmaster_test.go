@@ -52,5 +52,4 @@ func TestZkBasic(t *testing.T) {
 	}
 	log.Println("pass TestBasic")
 	fmt.Println()
-	time.Sleep(time.Hour)
 }

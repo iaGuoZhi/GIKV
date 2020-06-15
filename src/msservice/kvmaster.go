@@ -79,26 +79,105 @@ func (master *Master) getWorkInfo() {
 func (master *Master) initDht() {
 	for k := range master.workers {
 		lableStr := strconv.Itoa(k)
-		master.dht.Add(lableStr)
+		master.consistent.Add(lableStr)
 	}
 }
 
-//
-// fetch a key's value from the current primary;
-// if they key has never been set, return "".
-// Get() must keep trying until it either the
-// primary replies with the value or the primary
-// says the key doesn't exist (has never been Put().
-//
+// AddWorker ... add new worker(viewserver+primary+backup) to master's workers and consistent
+func (master *Master) AddWorker(args *AddWorkerArgs, reply *AddWorkerReply) error {
+	workPrimayPath := zkservice.GetWorkPrimayPath(args.label)
+	workViewServerPath := zkservice.GetWorkPrimayPath(args.label)
+
+	exists, _, err1 := master.conn.Exists(workPrimayPath)
+	if err1 != nil {
+		reply.err = ErrOther
+		return err1
+	}
+	if exists != true {
+		reply.err = ErrNoZnode
+		return nil
+	}
+
+	exists, _, err1 = master.conn.Exists(workViewServerPath)
+	if err1 != nil {
+		reply.err = ErrOther
+		return err1
+	}
+	if exists != true {
+		reply.err = ErrNoZnode
+		return nil
+	}
+
+	if _, exists = master.workers[args.label]; exists {
+		reply.err = ErrAlreadyAdded
+		return nil
+	}
+
+	worker := master.workers[args.label]
+	worker.label = args.label
+	worker.vshost = args.vshost
+	worker.primaryRPCAddress = args.primaryRPCAddress
+	worker.vck = viewservice.MakeClerk("", worker.vshost)
+	master.workers[args.label] = worker
+
+	//add to consistent
+	master.consistent.Add(strconv.Itoa(args.label))
+
+	reply.err = OK
+	return nil
+}
+
+// Get ... look for correct worker
 func (master *Master) Get(args *pbservice.GetArgs, reply *pbservice.GetReply) error {
 
-	reply.Err = pbservice.ErrWrongServer
-
-	workerLabelStr, err1 := master.dht.Get(args.Key)
+	found := false
+	// first try, the nearest two physical node
+	node1, node2, err1 := master.consistent.GetTwo(args.Key)
 	if err1 != nil {
 		panic(err1)
 	}
+	if node1 != "" {
+		master.get(args, reply, node1)
+		if reply.Err == pbservice.OK {
+			found = true
+			return nil
+		}
+	}
+	if node2 != "" {
+		master.get(args, reply, node2)
+		if reply.Err == pbservice.OK {
+			found = true
+		}
+	}
+
+	if found == false {
+		nodes, err2 := master.consistent.GetN(args.Key, master.consistent.Size())
+		if err2 != nil {
+			panic(err2)
+		}
+		for i := 2; i < master.consistent.Size(); i++ {
+			if nodes[i] != "" {
+				master.get(args, reply, nodes[i])
+				if reply.Err == pbservice.OK {
+					found = true
+					break
+				}
+			}
+		}
+	}
+
+	if found {
+		putArgs := pbservice.PutArgs{Key: args.Key, Value: reply.Value}
+		putReply := pbservice.PutReply{}
+		master.Put(&putArgs, &putReply)
+	}
+	return nil
+}
+
+func (master *Master) get(args *pbservice.GetArgs, reply *pbservice.GetReply, workerLabelStr string) error {
+
 	log.Printf("%s => %s\n", args.Key, workerLabelStr)
+	reply.Err = pbservice.ErrWrongServer
 
 	workerLable, err2 := strconv.Atoi(workerLabelStr)
 	if err2 != nil {
@@ -120,6 +199,7 @@ func (master *Master) Get(args *pbservice.GetArgs, reply *pbservice.GetReply) er
 		//key not exist
 		if reply.Err == pbservice.ErrNoKey {
 			reply.Value = pbservice.KeyInexsitence
+			return nil
 		}
 		time.Sleep(viewservice.PingInterval)
 	}
@@ -133,7 +213,7 @@ func (master *Master) Get(args *pbservice.GetArgs, reply *pbservice.GetReply) er
 //
 func (master *Master) Put(args *pbservice.PutArgs, reply *pbservice.PutReply) error {
 
-	workerLabelStr, err1 := master.dht.Get(args.Key)
+	workerLabelStr, err1 := master.consistent.Get(args.Key)
 	if err1 != nil {
 		panic(err1)
 	}
@@ -168,7 +248,7 @@ func (master *Master) Put(args *pbservice.PutArgs, reply *pbservice.PutReply) er
 // must keep trying until it succeeds.
 //
 func (master *Master) Delete(args *pbservice.DeleteArgs, reply *pbservice.DeleteReply) error {
-	workerLabelStr, err1 := master.dht.Get(args.Key)
+	workerLabelStr, err1 := master.consistent.Get(args.Key)
 	if err1 != nil {
 		panic(err1)
 	}

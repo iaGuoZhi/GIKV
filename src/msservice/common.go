@@ -1,13 +1,31 @@
 package msservice
 
 import (
-	"dhtservice"
+	"consistentservice"
 	"net"
 	"sync"
 	"viewservice"
 
 	"github.com/samuel/go-zookeeper/zk"
 )
+
+const (
+	OK              = "OK"
+	ErrNoZnode      = "NoZnode"
+	ErrAlreadyAdded = "ErrAlreadyAdded"
+	ErrOther        = "ErrOther"
+)
+
+type Err string
+
+type AddWorkerArgs struct {
+	label             int
+	primaryRPCAddress string
+	vshost            string
+}
+type AddWorkerReply struct {
+	err Err
+}
 
 type Work struct {
 	label             int
@@ -34,22 +52,12 @@ type Master struct {
 
 	// backups
 	backupsRPCAddress map[int]string
-	primaryRPCAddress string
-	vshost            string
-	vck               *viewservice.Clerk
 
 	// worker message
 	workers map[int]Work
 
 	// for distributed hash table
-	dht *dhtservice.Consistent
-
-	// for data sync
-	/*connProxy      net.Conn
-	msgQueue       chan string
-	masterPort     string
-	slavemgr       *slaveMgr
-	slv2masterConn net.Conn*/
+	consistent *consistentservice.Consistent
 }
 
 type slaveMgr struct {

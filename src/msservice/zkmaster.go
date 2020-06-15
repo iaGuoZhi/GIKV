@@ -1,7 +1,7 @@
 package msservice
 
 import (
-	"dhtservice"
+	"consistentservice"
 	"fmt"
 	"log"
 	"math/rand"
@@ -31,7 +31,7 @@ func (master *Master) init() {
 	}
 
 	master.workers = make(map[int]Work)
-	master.dht = dhtservice.New()
+	master.consistent = consistentservice.New()
 
 	// getWorkInfo
 	master.getWorkInfo()
