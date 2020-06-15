@@ -28,8 +28,9 @@ func TestMultiMasterSingleWorker(t *testing.T) {
 		panic(err1)
 	}
 
-	// create worker parent path
-	zkservice.RecursiveDelete(conn, zkservice.WorkerPath)
+	// init zk environment
+	zkservice.InitEnv(conn)
+
 	err1 = zkservice.CreateWorkParentPath(1, conn)
 	if err1 != nil {
 		panic(err1)
@@ -83,8 +84,8 @@ func TestMultiMasterMultiWorker(t *testing.T) {
 		panic(err1)
 	}
 
-	// delete znode created by other testcases
-	zkservice.RecursiveDelete(conn, zkservice.WorkerPath)
+	// init zk environment
+	zkservice.InitEnv(conn)
 
 	// create worker parent path
 	for i := range vshosts {
@@ -152,8 +153,8 @@ func TestAddWorkerMidWay(t *testing.T) {
 		panic(err1)
 	}
 
-	// delete znode created by other testcases
-	zkservice.RecursiveDelete(conn, zkservice.WorkerPath)
+	// init zk environment
+	zkservice.InitEnv(conn)
 
 	// record worker info in zk
 	for i := range vshosts {
@@ -187,7 +188,7 @@ func TestAddWorkerMidWay(t *testing.T) {
 
 	var keys [100]string
 	var values [100]string
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 100; i++ {
 		keys[i] = utilservice.RandStringBytesMaskImpr(10)
 		values[i] = utilservice.RandStringBytesMaskImpr(20)
 		log.Println(keys[i], values[i])
@@ -207,8 +208,8 @@ func TestAddWorkerMidWay(t *testing.T) {
 	}
 
 	// add new workers
-	var vshostsNew [1]string
-	var primaryhostsNew [1]string
+	var vshostsNew [3]string
+	var primaryhostsNew [3]string
 
 	for i := range vshostsNew {
 		vshostsNew[i] = port("viewserver-new", i+1)
@@ -232,13 +233,20 @@ func TestAddWorkerMidWay(t *testing.T) {
 		args := AddWorkerArgs{vshost: vshostsNew[i], primaryRPCAddress: primaryhostsNew[i], label: i + 10 + 1}
 		reply := AddWorkerReply{}
 		masters[0].AddWorker(&args, &reply)
+		if reply.err != OK {
+			log.Fatalln(reply.err)
+		}
 		log.Println(reply.err)
 	}
 
 	// test put-get is correct after add new node
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 100; i++ {
 		getArgs := pbservice.GetArgs{Key: keys[i]}
 		getReply := pbservice.GetReply{}
+		masters[0].Get(&getArgs, &getReply)
+		log.Println(getReply.Value)
+
+		getReply = pbservice.GetReply{}
 		masters[0].Get(&getArgs, &getReply)
 		log.Println(getReply.Value)
 
@@ -248,7 +256,7 @@ func TestAddWorkerMidWay(t *testing.T) {
 	}
 
 	// test added node has worked
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 100; i++ {
 		keys[i] = utilservice.RandStringBytesMaskImpr(10)
 		values[i] = utilservice.RandStringBytesMaskImpr(20)
 		log.Println(keys[i], values[i])

@@ -33,7 +33,7 @@ func TestZkBasic(t *testing.T) {
 	}
 
 	// check master value
-	masterValue, _, err1 := conn.Get(zkservice.MasterPath)
+	masterValue, _, err1 := conn.Get(zkservice.MasterMasterPath)
 	if err1 != nil {
 		panic(err1)
 	}

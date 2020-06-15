@@ -37,7 +37,7 @@ func (master *Master) init() {
 	master.getWorkInfo()
 
 	// init distributed hash table
-	master.initDht()
+	master.initConsistent()
 
 	// start rpc server
 	master.startServer()
@@ -52,7 +52,7 @@ func (master *Master) init() {
 func (master *Master) tryMaster() {
 
 	acls := zk.WorldACL(zk.PermAll)
-	_, err1 := master.conn.Create(zkservice.MasterPath, []byte(master.myRPCAddress), zk.FlagEphemeral, acls)
+	_, err1 := master.conn.Create(zkservice.MasterMasterPath, []byte(master.myRPCAddress), 0, acls)
 	if err1 == nil {
 		log.Println("now process is master")
 		master.bmaster = true
@@ -61,18 +61,18 @@ func (master *Master) tryMaster() {
 		master.bmaster = false
 		// create slave node
 		slaveNodePath := filepath.Join(zkservice.MasterSlavePath, strconv.Itoa(master.label))
-		_, err2 := master.conn.Create(slaveNodePath, []byte(master.myRPCAddress), zk.FlagEphemeral, acls)
+		_, err2 := master.conn.Create(slaveNodePath, []byte(master.myRPCAddress), 0, acls)
 		if err2 != nil {
 			log.Println("create zk slave node fail path: ", slaveNodePath)
 		}
-		masterByteInfo, _, err := master.conn.Get(zkservice.MasterPath)
+		masterByteInfo, _, err := master.conn.Get(zkservice.MasterMasterPath)
 		if err != nil {
 			log.Println("fatal err:", err)
 		}
 		log.Println("current process is slave, master info: ", string(masterByteInfo))
 
 		// add watch on master process
-		exists, _, evtCh, err0 := master.conn.ExistsW(zkservice.MasterPath)
+		exists, _, evtCh, err0 := master.conn.ExistsW(zkservice.MasterMasterPath)
 		if err0 != nil || !exists {
 			master.tryMaster()
 		} else {
@@ -162,7 +162,7 @@ func (master *Master) createProcessNode() {
 	}
 	if !exists {
 		acls := zk.WorldACL(zk.PermAll)
-		ret, err2 := master.conn.Create(processNode, []byte(master.myRPCAddress), zk.FlagEphemeral, acls)
+		ret, err2 := master.conn.Create(processNode, []byte(master.myRPCAddress), 0, acls)
 		if err2 != nil {
 			panic(err2)
 		}

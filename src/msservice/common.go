@@ -3,6 +3,9 @@ package msservice
 import (
 	"consistentservice"
 	"net"
+	"net/rpc"
+	"os"
+	"strconv"
 	"sync"
 	"viewservice"
 
@@ -71,3 +74,30 @@ var proxyAddr string = "127.0.0.1:2100"
 
 var packetSizeMax uint32 = 1024
 var msgPoolSize uint32 = 102400
+
+func port(tag string, host int) string {
+	s := "/var/tmp/824-"
+	s += strconv.Itoa(os.Getuid()) + "/"
+	os.Mkdir(s, 0777)
+	s += "ms-"
+	s += strconv.Itoa(os.Getpid()) + "-"
+	s += tag + "-"
+	s += strconv.Itoa(host)
+	return s
+}
+
+func call(srv string, rpcname string,
+	args interface{}, reply interface{}) bool {
+	c, errx := rpc.Dial("unix", srv)
+	if errx != nil {
+		return false
+	}
+	defer c.Close()
+
+	err := c.Call(rpcname, args, reply)
+	if err == nil {
+		return true
+	}
+
+	return false
+}
