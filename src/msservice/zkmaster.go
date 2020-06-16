@@ -36,9 +36,6 @@ func (master *Master) init() {
 	// getWorkInfo
 	master.getWorkInfo()
 
-	// init distributed hash table
-	master.initConsistent()
-
 	// start rpc server
 	master.startServer()
 

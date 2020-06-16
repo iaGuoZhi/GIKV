@@ -42,7 +42,7 @@ func TestMasterSlaveSync(t *testing.T) {
 			panic(err2)
 		}
 
-		_, err3 := conn.Create(zkservice.GetWorkPrimayPath(i+1), []byte(primaryhosts[i]), 0, acls)
+		_, err3 := conn.Create(zkservice.GetWorkPrimaryPath(i+1), []byte(primaryhosts[i]), 0, acls)
 		if err3 != nil {
 			panic(err3)
 		}
@@ -96,18 +96,11 @@ func TestMasterSlaveSync(t *testing.T) {
 			panic(err2)
 		}
 
-		_, err3 := conn.Create(zkservice.GetWorkPrimayPath(i+10+1), []byte(primaryhostsNew[i]), 0, acls)
+		_, err3 := conn.Create(zkservice.GetWorkPrimaryPath(i+10+1), []byte(primaryhostsNew[i]), 0, acls)
 		if err3 != nil {
 			panic(err3)
 		}
 
-		args := AddWorkerArgs{vshost: vshostsNew[i], primaryRPCAddress: primaryhostsNew[i], label: i + 10 + 1}
-		reply := AddWorkerReply{}
-		masters[0].AddWorker(&args, &reply)
-		if reply.err != OK {
-			log.Fatalln(reply.err)
-		}
-		log.Println(reply.err)
 	}
 
 	// test put-get is correct after add new node

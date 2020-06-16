@@ -21,15 +21,6 @@ const (
 
 type Err string
 
-type AddWorkerArgs struct {
-	label             int
-	primaryRPCAddress string
-	vshost            string
-}
-type AddWorkerReply struct {
-	err Err
-}
-
 type Work struct {
 	label             int
 	primaryRPCAddress string
