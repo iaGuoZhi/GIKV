@@ -27,8 +27,7 @@ func TestBasicOperation(t *testing.T) {
 
 	// create master
 	master := Master{}
-	master.label = 0
-	master.init()
+	master.init(0)
 
 	args := pbservice.PutArgs{Key: "hello", Value: "world"}
 	reply := pbservice.PutReply{}
@@ -50,7 +49,7 @@ func TestBasicOperation(t *testing.T) {
 	getReply = pbservice.GetReply{}
 	master.Get(&getArgs, &getReply)
 
-	if getReply.Value != pbservice.ErrNoKey {
+	if getReply.Value != "" {
 		log.Println("get value incorect")
 	}
 
@@ -74,8 +73,7 @@ func TestMultiMasterSingleWorker(t *testing.T) {
 	processName := [3]int{1, 2, 3}
 
 	for i := 0; i < 3; i++ {
-		masters[i].label = processName[i]
-		masters[i].init()
+		masters[i].init(processName[i])
 	}
 
 	args := pbservice.PutArgs{Key: "hello", Value: "world"}
@@ -135,8 +133,7 @@ func TestMultiMasterMultiWorker(t *testing.T) {
 	processName := [3]int{1, 2, 3}
 
 	for i := 0; i < 3; i++ {
-		masters[i].label = processName[i]
-		masters[i].init()
+		masters[i].init(processName[i])
 	}
 
 	var keys [100]string

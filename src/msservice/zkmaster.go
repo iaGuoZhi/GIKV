@@ -12,13 +12,20 @@ import (
 	"strconv"
 	"syscall"
 	"time"
+	"utilservice"
 	"zkservice"
 
 	"github.com/samuel/go-zookeeper/zk"
 )
 
-func (master *Master) init() {
+// Init ...
+func (master *Master) Init(label int) {
+	master.init(label)
+}
 
+func (master *Master) init(label int) {
+
+	master.label = label
 	c, _, err0 := zk.Connect([]string{zkservice.ZkServer}, time.Second)
 	if err0 != nil {
 		panic(err0)
@@ -51,8 +58,9 @@ func (master *Master) tryMaster() {
 	acls := zk.WorldACL(zk.PermAll)
 	_, err1 := master.conn.Create(zkservice.MasterMasterPath, []byte(master.myRPCAddress), 0, acls)
 	if err1 == nil {
-		log.Println("now process is master")
+		utilservice.MyPrintln("now process is master")
 		master.bmaster = true
+		fmt.Println("[ZooKeeper: ] create path: ", zkservice.MasterMasterPath)
 		master.initMaster()
 	} else {
 		master.bmaster = false
@@ -62,11 +70,15 @@ func (master *Master) tryMaster() {
 		if err2 != nil {
 			log.Println("create zk slave node fail path: ", slaveNodePath)
 		}
+		fmt.Println("[ZooKeeper: ] create path: ", slaveNodePath)
+
 		masterByteInfo, _, err := master.conn.Get(zkservice.MasterMasterPath)
 		if err != nil {
 			log.Println("fatal err:", err)
 		}
-		log.Println("current process is slave, master info: ", string(masterByteInfo))
+		if utilservice.DebugMode {
+			log.Println("current process is slave, master info: ", string(masterByteInfo))
+		}
 
 		// add watch on master process
 		exists, _, evtCh, err0 := master.conn.ExistsW(zkservice.MasterMasterPath)
@@ -108,7 +120,9 @@ func (master *Master) startServer() {
 	}
 	master.l = l
 
-	fmt.Printf("master %d start rpc server", master.label)
+	if utilservice.DebugMode {
+		fmt.Printf("master %d start rpc server", master.label)
+	}
 
 	go func() {
 		for master.dead == false {
@@ -152,7 +166,9 @@ func (master *Master) createProcessNode() {
 	}
 
 	processNode := filepath.Join(zkservice.MasterProcessPath, strconv.Itoa(master.label))
-	log.Println("node now is:", processNode)
+	if utilservice.DebugMode {
+		log.Println("node now is:", processNode)
+	}
 	exists, _, err1 = master.conn.Exists(processNode)
 	if err1 != nil {
 		panic(err1)
@@ -163,6 +179,9 @@ func (master *Master) createProcessNode() {
 		if err2 != nil {
 			panic(err2)
 		}
-		log.Println("create self node: ", ret)
+		fmt.Println("[ZooKeeper: ] create path: ", processNode)
+		if utilservice.DebugMode {
+			log.Println("create self node: ", ret)
+		}
 	}
 }

@@ -25,8 +25,7 @@ func TestZkBasic(t *testing.T) {
 	processName := [3]int{1, 2, 3}
 
 	for i := 0; i < 3; i++ {
-		masters[i].label = processName[i]
-		masters[i].init()
+		masters[i].init(processName[i])
 	}
 
 	conn, _, err0 := zk.Connect([]string{zkservice.ZkServer}, time.Second)
@@ -65,8 +64,7 @@ func TestZkWatchWorker(t *testing.T) {
 	zkservice.InitEnv(conn)
 
 	master := Master{}
-	master.label = 1
-	master.init()
+	master.init(1)
 
 	err1 := zkservice.CreateWorkParentPath(1, conn)
 	if err1 != nil {

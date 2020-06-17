@@ -34,8 +34,7 @@ func TestAddWorkerMidWay(t *testing.T) {
 	processName := [3]int{1, 2, 3}
 
 	for i := 0; i < 3; i++ {
-		masters[i].label = processName[i]
-		masters[i].init()
+		masters[i].init(processName[i])
 	}
 
 	var keys [100]string
@@ -174,8 +173,7 @@ func TestDeleteWorkerMidWay(t *testing.T) {
 	processName := [3]int{1, 2, 3}
 
 	for i := 0; i < 3; i++ {
-		masters[i].label = processName[i]
-		masters[i].init()
+		masters[i].init(processName[i])
 	}
 
 	var keys [100]string

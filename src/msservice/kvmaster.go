@@ -1,16 +1,16 @@
 package msservice
 
 import (
-	"fmt"
 	"log"
 	"pbservice"
 	"strconv"
+	"strings"
 	"time"
 	"utilservice"
 	"viewservice"
 )
 
-// Get ... look for correct worker
+// Get ... look for correct worker using lazy stragety
 func (master *Master) Get(args *pbservice.GetArgs, reply *pbservice.GetReply) error {
 
 	found := false
@@ -23,7 +23,6 @@ func (master *Master) Get(args *pbservice.GetArgs, reply *pbservice.GetReply) er
 		master.get(args, reply, node1)
 		if reply.Err == pbservice.OK {
 			found = true
-			return nil
 		}
 	}
 
@@ -41,12 +40,15 @@ func (master *Master) Get(args *pbservice.GetArgs, reply *pbservice.GetReply) er
 				}
 			}
 		}
+		if found {
+			putArgs := pbservice.PutArgs{Key: args.Key, Value: reply.Value}
+			putReply := pbservice.PutReply{}
+			master.Put(&putArgs, &putReply)
+		}
 	}
 
-	if found {
-		putArgs := pbservice.PutArgs{Key: args.Key, Value: reply.Value}
-		putReply := pbservice.PutReply{}
-		master.Put(&putArgs, &putReply)
+	if strings.Compare(reply.Value, pbservice.KeyInexsitence) == 0 {
+		reply.Value = ""
 	}
 	return nil
 }
@@ -106,7 +108,7 @@ func (master *Master) Put(args *pbservice.PutArgs, reply *pbservice.PutReply) er
 	}
 
 	ok := false
-	for !ok {
+	for !ok || reply.Err != pbservice.OK {
 		vok := false
 		var view viewservice.View
 		for !vok {
@@ -116,9 +118,6 @@ func (master *Master) Put(args *pbservice.PutArgs, reply *pbservice.PutReply) er
 		if srv != "" {
 			ok = call(srv, "PBServer.Put", args, &reply)
 		}
-	}
-	if reply.Err != pbservice.OK {
-		fmt.Println(reply.Err)
 	}
 	return nil
 }
@@ -141,11 +140,11 @@ func (master *Master) Delete(args *pbservice.DeleteArgs, reply *pbservice.Delete
 		panic(err2)
 	}
 
-	putArgs := pbservice.PutArgs{Key: args.Key, Value: pbservice.ErrNoKey}
+	putArgs := pbservice.PutArgs{Key: args.Key, Value: pbservice.KeyInexsitence}
 	putReply := pbservice.PutReply{}
 
 	ok := false
-	for !ok {
+	for !ok || putReply.Err != pbservice.OK {
 		vok := false
 		var view viewservice.View
 		for !vok {
@@ -155,10 +154,6 @@ func (master *Master) Delete(args *pbservice.DeleteArgs, reply *pbservice.Delete
 		if srv != "" {
 			ok = call(srv, "PBServer.Put", &putArgs, &putReply)
 		}
-		// time.Sleep(viewservice.PingInterval)   // sleep will abort locks
-	}
-	if putReply.Err != pbservice.OK {
-		fmt.Println(reply.Err)
 	}
 	reply.Err = pbservice.OK
 	return nil

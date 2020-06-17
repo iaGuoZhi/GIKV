@@ -122,10 +122,12 @@ func StartWorker(workerLabel int, conn *zk.Conn) error {
 	// create zk path for viewserver
 	zkservice.CreateWorkParentPath(workerLabel, conn)
 	var acls = zk.WorldACL(zk.PermAll)
-	_, err2 := conn.Create(zkservice.GetWorkViewServerPath(workerLabel), []byte(vshost), zk.FlagEphemeral, acls) //临时节点
+	vspath := zkservice.GetWorkViewServerPath(workerLabel)
+	_, err2 := conn.Create(vspath, []byte(vshost), zk.FlagEphemeral, acls) //临时节点
 	if err2 != nil {
 		panic(err2)
 	}
+	fmt.Println("[ZooKeeper: ] create path: ", vspath)
 
 	return nil
 }

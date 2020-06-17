@@ -14,7 +14,7 @@ const (
 	letterIdxMax  = 63 / letterIdxBits   // # of letter indices fitting in 63 bits
 )
 
-const DebugMode = true
+const DebugMode = false
 
 func RandStringBytesMaskImpr(n int) string {
 	b := make([]byte, n)

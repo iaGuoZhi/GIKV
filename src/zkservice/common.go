@@ -56,19 +56,24 @@ func GetWokrParentPath(workerLabel int) string {
 	return fmt.Sprintf("/GIKV/Worker/%d", workerLabel)
 }
 
+func GetMasterProcessPath(masterLabel string) string {
+	return fmt.Sprintf("/GIKV/Master/Process/%s", masterLabel)
+}
+
 func CreateWorkParentPath(workerLabel int, conn *zk.Conn) error {
 	exists, _, err0 := conn.Exists(WorkerPath)
 	if err0 != nil {
 		panic(err0)
 	}
 	if exists == false {
-		_, err0 = conn.Create(WorkerPath, []byte{}, 0, zk.WorldACL(zk.PermAll))
+		// 临时节点
+		_, err0 = conn.Create(WorkerPath, []byte{}, zk.FlagEphemeral, zk.WorldACL(zk.PermAll))
 		if err0 != nil {
 			panic(err0)
 		}
 	}
 	parentPath := GetWokrParentPath(workerLabel)
-	log.Println("parent path: ", parentPath)
+	fmt.Println("[ZooKeeper: ] create path: ", parentPath)
 	_, err1 := conn.Create(parentPath, []byte{}, 0, zk.WorldACL(zk.PermAll))
 	if err1 != nil {
 		panic(err1)
@@ -110,18 +115,24 @@ func InitEnv(conn *zk.Conn) {
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("[ZooKeeper: ] create path: ", WorkerPath)
 
 	RecursiveDelete(conn, MasterPath)
 	_, err = conn.Create(MasterPath, []byte{}, 0, zk.WorldACL(zk.PermAll))
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("[ZooKeeper: ] create path: ", MasterPath)
+
 	_, err = conn.Create(MasterSlavePath, []byte{}, 0, zk.WorldACL(zk.PermAll))
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("[ZooKeeper: ] create path: ", MasterSlavePath)
+
 	_, err = conn.Create(MasterProcessPath, []byte{}, 0, zk.WorldACL(zk.PermAll))
 	if err != nil {
 		panic(err)
 	}
+	fmt.Println("[ZooKeeper: ] create path: ", MasterProcessPath)
 }
