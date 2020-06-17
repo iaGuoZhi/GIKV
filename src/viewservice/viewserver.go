@@ -6,39 +6,12 @@ import (
 	"net"
 	"net/rpc"
 	"os"
-	"sync"
 	"time"
 )
 
-type ViewServer struct {
-	mu   sync.Mutex
-	l    net.Listener
-	dead bool
-	me   string
-
-	// Your declarations here.
-	view     View    // current view
-	newView  View    // next view
-	update   bool    // can view be updated?
-	promote  [2]bool // can backup 1&2 be promoted
-	lastPing map[string]time.Time
-}
-
-// Simpe Error
-type Err struct {
-	info string
-}
-
-func (e *Err) Error() string {
-	return e.info + "\n"
-}
-
-//
-// server Ping RPC handler.
-//
+// Ping ... handle client's remote ping event
 func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 
-	// Your code here.
 	vs.mu.Lock()
 	vs.lastPing[args.Me] = time.Now()
 	vs.mu.Unlock()
@@ -64,16 +37,13 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 	if v.Backup[1] == args.Me {
 		vs.promote[1] = (args.Viewnum == v.Viewnum)
 	}
-	//fmt.Println(nv.Primary)
-	//fmt.Println(nv.Backup)
-	//fmt.Println(vs.promote)
 
 	// Restarted primary treated as dead
 	if v.Primary == args.Me && args.Viewnum == 0 {
 		nv.Primary = ""
 	}
 
-	// change next view (like state machine)
+	// change next view
 	if nv.Primary == "" && nv.Backup[0] == "" && nv.Backup[1] == "" {
 		nv.Primary = args.Me
 		nv.Viewnum++
@@ -117,8 +87,6 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 	// update(and its condition)
 	vs.update = vs.update || ((v.Primary == args.Me) && (v.Viewnum == args.Viewnum))
 	// indeed update
-	//fmt.Println(vs.update)
-	//fmt.Println(nv.Viewnum, v.Viewnum)
 	if vs.update && nv.Viewnum != v.Viewnum {
 		nv.Viewnum = v.Viewnum + 1
 		*v = *nv
@@ -128,24 +96,16 @@ func (vs *ViewServer) Ping(args *PingArgs, reply *PingReply) error {
 	return nil
 }
 
-//
-// server Get() RPC handler.
-//
+// Get ... serve client get rpc
 func (vs *ViewServer) Get(args *GetArgs, reply *GetReply) error {
-
-	// Your code here.
 	reply.View = vs.view
 	return nil
 }
 
-//
-// tick() is called once per PingInterval; it should notice
-// if servers have died or recovered, and change the view
-// accordingly.
-//
+// tick ... tick() is called once per PingInterval; it should notice
+// if servers have died or recovered, and change the view accordingly.
 func (vs *ViewServer) tick() {
 
-	// Your code here.
 	nt := time.Now()
 	pm := &vs.newView.Primary
 	bk1 := &vs.newView.Backup[0]
@@ -171,20 +131,16 @@ func (vs *ViewServer) tick() {
 
 }
 
-//
-// tell the server to shut itself down.
-// for testing.
-// please don't change this function.
-//
-func (vs *ViewServer) Kill() {
+// KillViewServer ... kill viewserver down for testing.
+func (vs *ViewServer) killViewServer() {
 	vs.dead = true
 	vs.l.Close()
 }
 
+// StartServer ... initialize view server and listen to client's rpc
 func StartServer(me string) *ViewServer {
 	vs := new(ViewServer)
 	vs.me = me
-	// Your vs.* initializations here.
 	vs.view = View{0, "", [2]string{"", ""}}
 	vs.view = View{0, "", [2]string{"", ""}}
 	vs.update = false
@@ -195,19 +151,14 @@ func StartServer(me string) *ViewServer {
 	rpcs := rpc.NewServer()
 	rpcs.Register(vs)
 
-	// prepare to receive connections from clients.
-	// change "unix" to "tcp" to use over a network.
-	os.Remove(vs.me) // only needed for "unix"
+	// receive connections from clients.
+	os.Remove(vs.me)
 	l, e := net.Listen("unix", vs.me)
 	if e != nil {
 		log.Fatal("listen error: ", e)
 	}
 	vs.l = l
 
-	// please don't change any of the following code,
-	// or do anything to subvert it.
-
-	// create a thread to accept RPC connections from clients.
 	go func() {
 		for vs.dead == false {
 			conn, err := vs.l.Accept()
@@ -218,12 +169,12 @@ func StartServer(me string) *ViewServer {
 			}
 			if err != nil && vs.dead == false {
 				fmt.Printf("ViewServer(%v) accept: %v\n", me, err.Error())
-				vs.Kill()
+				vs.killViewServer()
 			}
 		}
 	}()
 
-	// create a thread to call tick() periodically.
+	// tick self
 	go func() {
 		for vs.dead == false {
 			vs.tick()

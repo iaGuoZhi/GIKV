@@ -49,8 +49,6 @@ func Test1(t *testing.T) {
 	ck3 := MakeClerk(port("3"), vshost)
 	ck4 := MakeClerk(port("4"), vshost)
 
-	//
-
 	if ck1.Primary() != "" {
 		t.Fatalf("there was a primary too soon")
 	}
@@ -162,110 +160,5 @@ func Test1(t *testing.T) {
 	}
 	fmt.Printf("  ... Passed\n")
 
-	// kill and immediately restart the primary -- does viewservice
-	// conclude primary is down even though it's pinging?
-	fmt.Printf("Test: Restarted primary treated as dead ...\n")
-
-	{
-		vx, _ := ck3.Get()
-		ck3.Ping(vx.Viewnum)
-		for i := 0; i < DeadPings*2; i++ {
-			ck3.Ping(0)
-			ck1.Ping(vx.Viewnum)
-			ck4.Ping(vx.Viewnum)
-			v, _ := ck1.Get()
-			if v.Primary != ck3.me {
-				break
-			}
-			time.Sleep(PingInterval)
-		}
-		vy, _ := ck1.Get()
-		if vy.Primary != ck1.me {
-			t.Fatalf("expected primary=%v, got %v\n", ck1.me, vy.Primary)
-		}
-
-		check(t, ck1, ck1.me, ck4.me, "", vx.Viewnum+1)
-	}
-	fmt.Printf("  ... Passed\n")
-
-	// set up a view with just 3 as primary,
-	// to prepare for the next test.
-	{
-		vx, _ := ck1.Get()
-		ck1.Ping(vx.Viewnum)
-		//fmt.Println(vx.Viewnum)
-		vx, _ = ck3.Get()
-		ck3.Ping(vx.Viewnum)
-		//fmt.Println(vx.Viewnum)
-		vx, _ = ck1.Get()
-		//fmt.Println(vx.Viewnum)
-		ck1.Ping(vx.Viewnum)
-		for i := 0; i < DeadPings*3; i++ {
-			vx, _ := ck3.Get()
-			ck3.Ping(vx.Viewnum)
-			time.Sleep(PingInterval)
-		}
-		v, _ := ck3.Get()
-		if v.Primary != ck3.me || v.Backup[0] != "" || v.Backup[1] != "" {
-			t.Fatalf("wrong: primary: %s backup1: %s backup2 %s", v.Primary, v.Backup[0], v.Backup[1])
-			t.Fatalf("wrong primary or backup")
-		}
-	}
-
-	// does viewserver wait for ack of previous view before
-	// starting the next one?
-	fmt.Printf("Test: Viewserver waits for primary to ack view ...\n")
-
-	{
-		// set up p=ck3 b=ck1, but
-		// but do not ack
-		vx, _ := ck1.Get()
-		for i := 0; i < DeadPings*3; i++ {
-			ck1.Ping(0)
-			ck3.Ping(vx.Viewnum)
-			v, _ := ck1.Get()
-			if v.Viewnum > vx.Viewnum {
-				break
-			}
-			time.Sleep(PingInterval)
-		}
-		check(t, ck1, ck3.me, ck1.me, "", vx.Viewnum+1)
-		vy, _ := ck1.Get()
-		// ck3 is the primary, but it never acked.
-		// let ck3 die. check that ck1 is not promoted.
-		for i := 0; i < DeadPings*3; i++ {
-			v, _ := ck1.Ping(vy.Viewnum)
-			if v.Viewnum > vy.Viewnum {
-				break
-			}
-			time.Sleep(PingInterval)
-		}
-		check(t, ck2, ck3.me, ck1.me, "", vy.Viewnum)
-	}
-	fmt.Printf("  ... Passed\n")
-
-	// if old servers die, check that a new (uninitialized) server
-	// cannot take over.
-	fmt.Printf("Test: Uninitialized server can't become primary ...\n")
-
-	{
-		for i := 0; i < DeadPings*2; i++ {
-			v, _ := ck1.Get()
-			ck1.Ping(v.Viewnum)
-			ck2.Ping(0)
-			ck3.Ping(v.Viewnum)
-			time.Sleep(PingInterval)
-		}
-		for i := 0; i < DeadPings*2; i++ {
-			ck2.Ping(0)
-			time.Sleep(PingInterval)
-		}
-		vz, _ := ck2.Get()
-		if vz.Primary == ck2.me {
-			t.Fatalf("uninitialized backup promoted to primary")
-		}
-	}
-	fmt.Printf("  ... Passed\n")
-
-	vs.Kill()
+	vs.killViewServer()
 }
