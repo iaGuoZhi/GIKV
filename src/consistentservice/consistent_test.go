@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func ExampleNew() {
+func TestNew(t *testing.T) {
 	c := New()
 	c.Add("cacheA")
 	c.Add("cacheB")
@@ -28,7 +28,7 @@ func ExampleNew() {
 	// user_stringer => cacheC
 }
 
-func ExampleAdd() {
+func TestAdd(t *testing.T) {
 	c := New()
 	c.Add("cacheA")
 	c.Add("cacheB")
@@ -68,7 +68,7 @@ func ExampleAdd() {
 	// user_stringer => cacheE
 }
 
-func ExampleRemove() {
+func TestRemove(t *testing.T) {
 	c := New()
 	c.Add("cacheA")
 	c.Add("cacheB")

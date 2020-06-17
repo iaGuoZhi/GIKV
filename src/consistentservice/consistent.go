@@ -12,6 +12,7 @@ import (
 
 type uints []uint32
 
+// uints interfaces to implement sort
 // Len returns the length of the uints array.
 func (x uints) Len() int { return len(x) }
 
@@ -31,14 +32,10 @@ type Consistent struct {
 	sortedHashes     uints
 	NumberOfReplicas int
 	count            int64
-	scratch          [64]byte
-	UseFnv           bool
 	Mu               sync.RWMutex
 }
 
-// New creates a new Consistent object with a default setting of 20 replicas for each entry.
-//
-// To change the number of replicas, set NumberOfReplicas before adding entries.
+// New ... creates a new Consistent object with a default setting of 20 replicas for each entry.
 func New() *Consistent {
 	c := new(Consistent)
 	c.NumberOfReplicas = 20
@@ -47,7 +44,7 @@ func New() *Consistent {
 	return c
 }
 
-// node number
+// Size ... return node number
 func (c *Consistent) Size() int {
 	return int(c.count)
 }
@@ -58,14 +55,13 @@ func (c *Consistent) eltKey(elt string, idx int) string {
 	return strconv.Itoa(idx) + elt
 }
 
-// Add inserts a string element in the consistent hash.
+// Add ... inserts a string element in the consistent hash.
 func (c *Consistent) Add(elt string) {
 	c.Mu.Lock()
 	defer c.Mu.Unlock()
 	c.add(elt)
 }
 
-// need c.Lock() before calling
 func (c *Consistent) add(elt string) {
 	for i := 0; i < c.NumberOfReplicas; i++ {
 		c.circle[c.hashKey(c.eltKey(elt, i))] = elt
@@ -75,14 +71,13 @@ func (c *Consistent) add(elt string) {
 	c.count++
 }
 
-// Remove removes an element from the hash.
+// Remove ... removes an element from the hash.
 func (c *Consistent) Remove(elt string) {
 	c.Mu.Lock()
 	defer c.Mu.Unlock()
 	c.remove(elt)
 }
 
-// need c.Lock() before calling
 func (c *Consistent) remove(elt string) {
 	for i := 0; i < c.NumberOfReplicas; i++ {
 		delete(c.circle, c.hashKey(c.eltKey(elt, i)))
@@ -90,42 +85,6 @@ func (c *Consistent) remove(elt string) {
 	delete(c.members, elt)
 	c.updateSortedHashes()
 	c.count--
-}
-
-// Set sets all the elements in the hash.  If there are existing elements not
-// present in elts, they will be removed.
-func (c *Consistent) Set(elts []string) {
-	c.Mu.Lock()
-	defer c.Mu.Unlock()
-	for k := range c.members {
-		found := false
-		for _, v := range elts {
-			if k == v {
-				found = true
-				break
-			}
-		}
-		if !found {
-			c.remove(k)
-		}
-	}
-	for _, v := range elts {
-		_, exists := c.members[v]
-		if exists {
-			continue
-		}
-		c.add(v)
-	}
-}
-
-func (c *Consistent) Members() []string {
-	c.Mu.RLock()
-	defer c.Mu.RUnlock()
-	var m []string
-	for k := range c.members {
-		m = append(m, k)
-	}
-	return m
 }
 
 // Get returns an element close to where name hashes to in the circle.
@@ -149,35 +108,6 @@ func (c *Consistent) search(key uint32) (i int) {
 		i = 0
 	}
 	return
-}
-
-// GetTwo returns the two closest distinct elements to the name input in the circle.
-func (c *Consistent) GetTwo(name string) (string, string, error) {
-	c.Mu.RLock()
-	defer c.Mu.RUnlock()
-	if len(c.circle) == 0 {
-		return "", "", ErrEmptyCircle
-	}
-	key := c.hashKey(name)
-	i := c.search(key)
-	a := c.circle[c.sortedHashes[i]]
-
-	if c.count == 1 {
-		return a, "", nil
-	}
-
-	start := i
-	var b string
-	for i = start + 1; i != start; i++ {
-		if i >= len(c.sortedHashes) {
-			i = 0
-		}
-		b = c.circle[c.sortedHashes[i]]
-		if b != a {
-			break
-		}
-	}
-	return a, b, nil
 }
 
 // GetN returns the N closest distinct elements to the name input in the circle.
@@ -268,9 +198,6 @@ func (c *Consistent) GetNext(name string, node string) (string, error) {
 }
 
 func (c *Consistent) hashKey(key string) uint32 {
-	if c.UseFnv {
-		return c.hashKeyFnv(key)
-	}
 	return c.hashKeyCRC32(key)
 }
 

@@ -178,7 +178,7 @@ func TestDeleteWorkerMidWay(t *testing.T) {
 
 	var keys [100]string
 	var values [100]string
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 10; i++ {
 		keys[i] = utilservice.RandStringBytesMaskImpr(10)
 		values[i] = utilservice.RandStringBytesMaskImpr(20)
 		if utilservice.DebugMode {
@@ -208,7 +208,7 @@ func TestDeleteWorkerMidWay(t *testing.T) {
 	}
 
 	// test put-get is correct after delete worker
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 10; i++ {
 		getArgs := pbservice.GetArgs{Key: keys[i]}
 		getReply := pbservice.GetReply{}
 		masters[0].Get(&getArgs, &getReply)
@@ -226,7 +226,7 @@ func TestDeleteWorkerMidWay(t *testing.T) {
 	fmt.Println("Get-put after delete worker Pass")
 
 	// test all master can handle request
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 10; i++ {
 		keys[i] = utilservice.RandStringBytesMaskImpr(10)
 		values[i] = utilservice.RandStringBytesMaskImpr(20)
 		if utilservice.DebugMode {

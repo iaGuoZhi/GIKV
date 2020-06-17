@@ -136,7 +136,6 @@ func (pb *PBServer) MoveDB(args *MoveDBArgs, reply *MoveDBReply) error {
 
 // DropDB when a worker node is delete, DropDB will forward it'sdata to other worker node
 func (pb *PBServer) DropDB(args *DropDBArgs, reply *DropDBReply) error {
-	fmt.Println("drop")
 	reply.Err = OK
 	pb.mu.Lock()
 	defer pb.mu.Unlock()

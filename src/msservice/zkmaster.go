@@ -61,7 +61,6 @@ func (master *Master) tryMaster() {
 		utilservice.MyPrintln("now process is master")
 		master.bmaster = true
 		fmt.Println("[ZooKeeper: ] create path: ", zkservice.MasterMasterPath)
-		master.initMaster()
 	} else {
 		master.bmaster = false
 		// create slave node
@@ -88,10 +87,6 @@ func (master *Master) tryMaster() {
 			master.handleMasterDownEvt(evtCh)
 		}
 	}
-}
-
-func (master *Master) initMaster() {
-
 }
 
 func (master *Master) onMasterDown() {
