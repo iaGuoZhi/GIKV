@@ -13,16 +13,7 @@ import (
 	"github.com/samuel/go-zookeeper/zk"
 )
 
-func TestMultiMasterSingleWorker(t *testing.T) {
-	// create worker
-
-	vshost := port("viewserver", 1)
-	viewservice.StartServer(vshost)
-
-	primaryhost := port("worker1-node1", 1)
-	pbservice.StartServer(vshost, primaryhost)
-
-	// record rpc address of viewserver and primary into zk
+func TestBasicOperation(t *testing.T) {
 	conn, _, err1 := zk.Connect([]string{zkservice.ZkServer}, time.Second)
 	if err1 != nil {
 		panic(err1)
@@ -31,21 +22,52 @@ func TestMultiMasterSingleWorker(t *testing.T) {
 	// init zk environment
 	zkservice.InitEnv(conn)
 
-	err1 = zkservice.CreateWorkParentPath(1, conn)
+	// create worker
+	pbservice.StartWorker(1, conn)
+
+	// create master
+	master := Master{}
+	master.label = 0
+	master.init()
+
+	args := pbservice.PutArgs{Key: "hello", Value: "world"}
+	reply := pbservice.PutReply{}
+	master.Put(&args, &reply)
+
+	getArgs := pbservice.GetArgs{Key: "hello"}
+	getReply := pbservice.GetReply{}
+	master.Get(&getArgs, &getReply)
+
+	if getReply.Value != "world" {
+		log.Println("get value incorect")
+	}
+
+	deleteArgs := pbservice.DeleteArgs{Key: "hello"}
+	deleteReply := pbservice.DeleteReply{}
+	master.Delete(&deleteArgs, &deleteReply)
+
+	getArgs = pbservice.GetArgs{Key: "hello"}
+	getReply = pbservice.GetReply{}
+	master.Get(&getArgs, &getReply)
+
+	if getReply.Value != pbservice.ErrNoKey {
+		log.Println("get value incorect")
+	}
+
+	fmt.Println("Test Put-get and DeleteGet Pass")
+}
+func TestMultiMasterSingleWorker(t *testing.T) {
+
+	conn, _, err1 := zk.Connect([]string{zkservice.ZkServer}, time.Second)
 	if err1 != nil {
 		panic(err1)
 	}
 
-	var acls = zk.WorldACL(zk.PermAll)
-	_, err2 := conn.Create(zkservice.GetWorkViewServerPath(1), []byte(vshost), 0, acls) //persistent znode
-	if err2 != nil {
-		panic(err2)
-	}
+	// init zk environment
+	zkservice.InitEnv(conn)
 
-	_, err3 := conn.Create(zkservice.GetWorkPrimaryPath(1), []byte(primaryhost), 0, acls)
-	if err3 != nil {
-		panic(err3)
-	}
+	// create worker
+	pbservice.StartWorker(1, conn)
 
 	// create master
 	masters := [3]Master{}

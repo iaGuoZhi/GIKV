@@ -141,6 +141,9 @@ func (master *Master) Delete(args *pbservice.DeleteArgs, reply *pbservice.Delete
 		panic(err2)
 	}
 
+	putArgs := pbservice.PutArgs{Key: args.Key, Value: pbservice.ErrNoKey}
+	putReply := pbservice.PutReply{}
+
 	ok := false
 	for !ok {
 		vok := false
@@ -150,12 +153,13 @@ func (master *Master) Delete(args *pbservice.DeleteArgs, reply *pbservice.Delete
 		}
 		srv := view.Primary
 		if srv != "" {
-			ok = call(srv, "PBServer.Delete", args, &reply)
+			ok = call(srv, "PBServer.Put", &putArgs, &putReply)
 		}
 		// time.Sleep(viewservice.PingInterval)   // sleep will abort locks
 	}
-	if reply.Err != pbservice.OK {
+	if putReply.Err != pbservice.OK {
 		fmt.Println(reply.Err)
 	}
+	reply.Err = pbservice.OK
 	return nil
 }
