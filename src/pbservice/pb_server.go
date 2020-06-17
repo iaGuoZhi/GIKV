@@ -3,30 +3,16 @@ package pbservice
 import (
 	"fmt"
 	"log"
-	"math/rand"
 	"net"
 	"net/rpc"
 	"os"
-	"sync"
-	"syscall"
 	"time"
+	"utilservice"
 	"viewservice"
 )
 
-type PBServer struct {
-	mu         sync.Mutex
-	l          net.Listener
-	dead       bool // for testing
-	unreliable bool // for testing
-	me         string
-	vs         *viewservice.Clerk
-	view       viewservice.View
-	db         map[string]string
-	connected  bool
-}
-
+// Get ... return key's value directly
 func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
-	// Your code here.
 	if !pb.connected { // lose connection with viewserver
 		reply.Err = ErrWrongServer
 		return nil
@@ -46,9 +32,8 @@ func (pb *PBServer) Get(args *GetArgs, reply *GetReply) error {
 	return nil
 }
 
+// Put ... put value in db and forward put operation to backups
 func (pb *PBServer) Put(args *PutArgs, reply *PutReply) error {
-	// Your code here.
-	// fmt.Println("Put", *args)
 	if !pb.connected { // lose connection with viewserver
 		reply.Err = ErrWrongServer
 		return nil
@@ -71,7 +56,6 @@ func (pb *PBServer) Put(args *PutArgs, reply *PutReply) error {
 		}
 		pb.mu.Unlock()
 	} else {
-		// fmt.Println("I am not primary")
 		ok := false
 		for !ok {
 			ok = call(pb.view.Primary, "PBServer.Put", args, reply)
@@ -80,7 +64,7 @@ func (pb *PBServer) Put(args *PutArgs, reply *PutReply) error {
 	return nil
 }
 
-// forward to backup
+// ForwardPut ... only used by backup
 func (pb *PBServer) ForwardPut(args *PutArgs, reply *PutReply) error {
 	pb.mu.Lock()
 	reply.Err = OK
@@ -89,6 +73,7 @@ func (pb *PBServer) ForwardPut(args *PutArgs, reply *PutReply) error {
 	return nil
 }
 
+// Delete ... delete key in db and forward delete to backups
 func (pb *PBServer) Delete(args *DeleteArgs, reply *DeleteReply) error {
 
 	if !pb.connected { // lose connection with viewserver
@@ -121,7 +106,7 @@ func (pb *PBServer) Delete(args *DeleteArgs, reply *DeleteReply) error {
 	return nil
 }
 
-// forward to backup
+// ForwardDelete ... only used by backups
 func (pb *PBServer) ForwardDelete(args *DeleteArgs, reply *DeleteReply) error {
 	pb.mu.Lock()
 	reply.Err = OK
@@ -130,13 +115,13 @@ func (pb *PBServer) ForwardDelete(args *DeleteArgs, reply *DeleteReply) error {
 	return nil
 }
 
-// Receive DB
+// MoveDB ... move db to a new joined node or recovered node
 func (pb *PBServer) MoveDB(args *MoveDBArgs, reply *MoveDBReply) error {
 	reply.Err = OK
 	pb.mu.Lock()
 	if len(pb.db) != 0 { // not an empty db
 		// fmt.Println("Clear DB:", len(pb.db))
-		for key, _ := range pb.db {
+		for key := range pb.db {
 			delete(pb.db, key)
 		}
 	}
@@ -149,14 +134,49 @@ func (pb *PBServer) MoveDB(args *MoveDBArgs, reply *MoveDBReply) error {
 	return nil
 }
 
-//
-// ping the viewserver periodically.
-// if view changed:
-//   transition to new view.
-//   manage transfer of state from primary to new backup.
-//
+// DropDB when a worker node is delete, DropDB will forward it'sdata to other worker node
+func (pb *PBServer) DropDB(args *DropDBArgs, reply *DropDBReply) error {
+	fmt.Println("drop")
+	reply.Err = OK
+	pb.mu.Lock()
+	defer pb.mu.Unlock()
+
+	masterRPCAddress := args.MasterPRCAddress
+
+	if len(pb.db) != 0 {
+		for k, v := range pb.db {
+			nextNodeArgs := ConsistentNextArgs{CurServerLabel: args.MyWorkerLabel, Key: k}
+			nextNodeReply := ConsistentNextReply{}
+			ok := false
+			for ok == false || nextNodeReply.Err != OK {
+				ok = call(masterRPCAddress, "Master.GetNextNode", &nextNodeArgs, &nextNodeReply)
+			}
+			nextWorkerLabel := nextNodeReply.NextWorkerLabel
+			nextWorkerPrimaryRPCAddress := nextNodeReply.NextWorkerPrimaryRPCAddress
+
+			if utilservice.DebugMode {
+				log.Printf("data %s from %s forward to %s\n", k, args.MyWorkerLabel, nextWorkerLabel)
+			}
+
+			putArgs := PutArgs{Key: k, Value: v}
+			putReply := PutReply{}
+
+			ok = false
+			for !ok {
+				utilservice.MyPrintln(nextWorkerPrimaryRPCAddress)
+				ok = call(nextWorkerPrimaryRPCAddress, "PBServer.Put", &putArgs, &putReply)
+				if putReply.Err != OK {
+					log.Println(putReply.Err)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// tick ... ping viewserver periodically , transite to new view
+// primary should also manage transfer data to new backup.
 func (pb *PBServer) tick() {
-	// Your code here.
 	backups := pb.view.Backup
 	v, e := pb.vs.Ping(pb.view.Viewnum)
 	if e == nil {
@@ -166,31 +186,30 @@ func (pb *PBServer) tick() {
 		// Primary must move DB to new backup
 		for i := 0; i < viewservice.BackupNums; i++ {
 			if backups[i] != newbks[i] && newbks[i] != "" && pb.me == pb.view.Primary {
-				// fmt.Println("Move to backup:", newbk, "sizw:",len(pb.db))
 				pb.mu.Lock()
-				MoveDB(newbks[i], pb.db) // defined in client.go
+				MoveDB(newbks[i], pb.db)
 				pb.mu.Unlock()
 			}
 		}
 	} else {
 		pb.connected = false
-		// fmt.Println(e)
 	}
 }
 
-// tell the server to shut itself down.
-// please do not change this function.
-func (pb *PBServer) kill() {
+// KillPBServer ... for testing
+func (pb *PBServer) killPBServer() {
 	pb.dead = true
 	pb.l.Close()
 }
 
+// StartServer ... initialize PBServer and create a thread listen to master's request
+// also should ping viewserver periodically
 func StartServer(vshost string, me string) *PBServer {
 	pb := new(PBServer)
 	pb.me = me
 	pb.vs = viewservice.MakeClerk(me, vshost)
-	// Your pb.* initializations here.
-	pb.view = viewservice.View{0, "", [2]string{"", ""}}
+
+	pb.view = viewservice.View{Viewnum: 0, Primary: "", Backup: [2]string{"", ""}}
 	pb.db = make(map[string]string)
 	pb.connected = true
 
@@ -204,34 +223,18 @@ func StartServer(vshost string, me string) *PBServer {
 	}
 	pb.l = l
 
-	// please do not change any of the following code,
-	// or do anything to subvert it.
-
 	go func() {
 		for pb.dead == false {
 			conn, err := pb.l.Accept()
 			if err == nil && pb.dead == false {
-				if pb.unreliable && (rand.Int63()%1000) < 100 {
-					// discard the request.
-					conn.Close()
-				} else if pb.unreliable && (rand.Int63()%1000) < 200 {
-					// process the request but force discard of reply.
-					c1 := conn.(*net.UnixConn)
-					f, _ := c1.File()
-					err := syscall.Shutdown(int(f.Fd()), syscall.SHUT_WR)
-					if err != nil {
-						fmt.Printf("shutdown: %v\n", err)
-					}
-					go rpcs.ServeConn(conn)
-				} else {
-					go rpcs.ServeConn(conn)
-				}
+				go rpcs.ServeConn(conn)
+
 			} else if err == nil {
 				conn.Close()
 			}
 			if err != nil && pb.dead == false {
 				fmt.Printf("PBServer(%v) accept: %v\n", me, err.Error())
-				pb.kill()
+				pb.killPBServer()
 			}
 		}
 	}()

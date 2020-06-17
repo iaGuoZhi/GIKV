@@ -7,34 +7,18 @@ import (
 	"viewservice"
 )
 
-// You'll probably need to uncomment this:
-
+// Clerk ... store in client
 type Clerk struct {
 	vs *viewservice.Clerk
 }
 
+// MakeClerk ...
 func MakeClerk(vshost string, me string) *Clerk {
 	ck := new(Clerk)
 	ck.vs = viewservice.MakeClerk(me, vshost)
 	return ck
 }
 
-//
-// call() sends an RPC to the rpcname handler on server srv
-// with arguments args, waits for the reply, and leaves the
-// reply in reply. the reply argument should be a pointer
-// to a reply structure.
-//
-// the return value is true if the server responded, and false
-// if call() was not able to contact the server. in particular,
-// the reply's contents are only valid if call() returned true.
-//
-// you should assume that call() will time out and return an
-// error after a while if it doesn't get a reply from the server.
-//
-// please use call() to send all RPCs, in client.go and server.go.
-// please don't change this function.
-//
 func call(srv string, rpcname string,
 	args interface{}, reply interface{}) bool {
 	c, errx := rpc.Dial("unix", srv)
@@ -47,20 +31,11 @@ func call(srv string, rpcname string,
 	if err == nil {
 		return true
 	}
-
-	// fmt.Println(err)
 	return false
 }
 
-//
-// fetch a key's value from the current primary;
-// if they key has never been set, return "".
-// Get() must keep trying until it either the
-// primary replies with the value or the primary
-// says the key doesn't exist (has never been Put().
-//
+// Get ... get key's value from primary
 func (ck *Clerk) Get(key string) string {
-	// Your code here.
 	args := &GetArgs{key}
 	var reply GetReply
 	reply.Err = ErrWrongServer
@@ -87,12 +62,9 @@ func (ck *Clerk) Get(key string) string {
 	return reply.Value
 }
 
-//
-// tell the primary to update key's value.
-// must keep trying until it succeeds.
-//
+// Put ... tell primay to update key's value and forward put operation to slaeves
+// must keep trying until it succeeds
 func (ck *Clerk) Put(key string, value string) {
-	// Your code here.
 	args := &PutArgs{key, value}
 	var reply PutReply
 
@@ -107,7 +79,6 @@ func (ck *Clerk) Put(key string, value string) {
 		if srv != "" {
 			ok = call(srv, "PBServer.Put", args, &reply)
 		}
-		// time.Sleep(viewservice.PingInterval)   // sleep will abort locks
 	}
 	if reply.Err != OK {
 		fmt.Println(reply.Err)
@@ -115,12 +86,8 @@ func (ck *Clerk) Put(key string, value string) {
 
 }
 
-//
-// tell the primary to delete key from db
-// must keep trying until it succeeds.
-//
+// Delete ... tell primary to delete key from db and forward delete operation to slaves
 func (ck *Clerk) Delete(key string) {
-	// Your code here.
 	args := &DeleteArgs{key}
 	var reply DeleteReply
 
@@ -135,7 +102,6 @@ func (ck *Clerk) Delete(key string) {
 		if srv != "" {
 			ok = call(srv, "PBServer.Delete", args, &reply)
 		}
-		// time.Sleep(viewservice.PingInterval)   // sleep will abort locks
 	}
 	if reply.Err != OK {
 		fmt.Println(reply.Err)
@@ -143,13 +109,13 @@ func (ck *Clerk) Delete(key string) {
 
 }
 
-// receive DB if a backup is built
+// MoveDB ... move db's data to a new joined backup
 func MoveDB(backup string, db map[string]string) {
 	args := &MoveDBArgs{db}
 	var reply MoveDBReply
 	ok := call(backup, "PBServer.MoveDB", args, &reply)
 	if !ok {
-		// fmt.Println("Call MoveDB error")
+		//fmt.Println("Call MoveDB error")
 	}
 	if reply.Err != OK {
 		fmt.Println(reply.Err)
