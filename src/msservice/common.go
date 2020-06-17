@@ -22,10 +22,9 @@ const (
 type Err string
 
 type Work struct {
-	label             int
-	primaryRPCAddress string
-	vshost            string
-	vck               *viewservice.Clerk
+	label  int
+	vshost string
+	vck    *viewservice.Clerk
 }
 
 // Master ... tbd
@@ -51,18 +50,6 @@ type Master struct {
 	consistent *consistentservice.Consistent
 }
 
-type slaveMgr struct {
-	connMap map[int]*net.TCPConn
-	sessid  int
-	sync.RWMutex
-}
-
-var masterListenPort string = "8010"
-var proxyAddr string = "127.0.0.1:2100"
-
-var packetSizeMax uint32 = 1024
-var msgPoolSize uint32 = 102400
-
 func port(tag string, host int) string {
 	s := "/var/tmp/824-"
 	s += strconv.Itoa(os.Getuid()) + "/"
@@ -86,6 +73,6 @@ func call(srv string, rpcname string,
 	if err == nil {
 		return true
 	}
-
+	panic(err)
 	return false
 }

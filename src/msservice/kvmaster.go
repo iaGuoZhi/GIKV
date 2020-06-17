@@ -6,6 +6,7 @@ import (
 	"pbservice"
 	"strconv"
 	"time"
+	"utilservice"
 	"viewservice"
 )
 
@@ -52,7 +53,9 @@ func (master *Master) Get(args *pbservice.GetArgs, reply *pbservice.GetReply) er
 
 func (master *Master) get(args *pbservice.GetArgs, reply *pbservice.GetReply, workerLabelStr string) error {
 
-	log.Printf("%s => %s\n", args.Key, workerLabelStr)
+	if utilservice.DebugMode {
+		log.Printf("%s => %s\n", args.Key, workerLabelStr)
+	}
 	reply.Err = pbservice.ErrWrongServer
 
 	workerLable, err2 := strconv.Atoi(workerLabelStr)
@@ -93,7 +96,9 @@ func (master *Master) Put(args *pbservice.PutArgs, reply *pbservice.PutReply) er
 	if err1 != nil {
 		panic(err1)
 	}
-	log.Printf("%s => %s\n", args.Key, workerLabelStr)
+	if utilservice.DebugMode {
+		log.Printf("%s => %s\n", args.Key, workerLabelStr)
+	}
 
 	workerLable, err2 := strconv.Atoi(workerLabelStr)
 	if err2 != nil {
@@ -111,7 +116,6 @@ func (master *Master) Put(args *pbservice.PutArgs, reply *pbservice.PutReply) er
 		if srv != "" {
 			ok = call(srv, "PBServer.Put", args, &reply)
 		}
-		// time.Sleep(viewservice.PingInterval)   // sleep will abort locks
 	}
 	if reply.Err != pbservice.OK {
 		fmt.Println(reply.Err)
@@ -128,7 +132,9 @@ func (master *Master) Delete(args *pbservice.DeleteArgs, reply *pbservice.Delete
 	if err1 != nil {
 		panic(err1)
 	}
-	log.Printf("%s => %s\n", args.Key, workerLabelStr)
+	if utilservice.DebugMode {
+		log.Printf("%s => %s\n", args.Key, workerLabelStr)
+	}
 
 	workerLable, err2 := strconv.Atoi(workerLabelStr)
 	if err2 != nil {
