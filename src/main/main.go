@@ -83,10 +83,70 @@ func doDelete(key string) {
 	}
 }
 
+func doKill(kind string, target string) bool {
+	conn, _, err1 := zk.Connect([]string{zkservice.ZkServer}, time.Second)
+	if err1 != nil {
+		panic(err1)
+	}
+
+	switch kind {
+	case "-m":
+		{
+			zkservice.RecursiveDelete(conn, zkservice.MasterMasterPath)
+			time.Sleep(time.Second)
+			fmt.Println("master has been killed")
+			return true
+		}
+	case "-v":
+		{
+			workerLabel, err1 := strconv.Atoi(target)
+			if err1 != nil {
+				return false
+			}
+
+			workerPath := zkservice.GetWokrParentPath(workerLabel)
+			err2 := zkservice.RecursiveDelete(conn, workerPath)
+			if err2 != nil {
+				return false
+			}
+			time.Sleep(time.Second)
+			fmt.Printf("viewserver %s as well as its worker has been killed \n", target)
+			return true
+		}
+	case "-p":
+		{
+			workerLabel, err3 := strconv.Atoi(target)
+			if err3 != nil {
+				panic(err3)
+			}
+			vsPath := zkservice.GetWorkViewServerPath(workerLabel)
+			vsAddress, _, err4 := conn.Get(vsPath)
+			if err4 != nil {
+				panic(err4)
+			}
+
+			vck := viewservice.MakeClerk("", string(vsAddress))
+			vok := false
+			var view viewservice.View
+			for vok == false {
+				view, vok = vck.Get()
+			}
+			primaryAddress := view.Primary
+			killArgs := pbservice.KillArgs{}
+			killReply := pbservice.KillReply{}
+			call(primaryAddress, "PBServer.Kill", &killArgs, &killReply)
+			time.Sleep(time.Millisecond * 100)
+			fmt.Printf("primary of worker %s has been killed \n", target)
+			return true
+		}
+	}
+	return false
+}
+
 func handleCmd(text string) {
 	tokens := strings.Split(text, " ")
 
-	if len(tokens) == 3 && tokens[0] == "put" || (len(tokens) == 2 && (tokens[0] == "get" || tokens[0] == "delete")) {
+	if len(tokens) == 3 && (tokens[0] == "put" || tokens[0] == "kill") || (len(tokens) == 2 && (tokens[0] == "get" || tokens[0] == "delete")) {
 		if strarted == false {
 			fmt.Println("GIKV has not been started")
 			return
@@ -104,6 +164,12 @@ func handleCmd(text string) {
 		case "delete":
 			{
 				doDelete(tokens[1])
+			}
+		case "kill":
+			{
+				if doKill(tokens[1], tokens[2]) == false {
+					printInvalidCmd(text)
+				}
 			}
 		}
 	} else {
@@ -129,6 +195,7 @@ func help() {
 	fmt.Println("This Are the Avaliable commands: ")
 	fmt.Println("start  ----- start GIKV")
 	fmt.Println("ls  ----- get current master,slave,viewserver,primary,backup")
+	fmt.Println("kill  ----- kill master(-m $master) or viewserver(-v $worker) or primary(-v $worker)")
 	fmt.Println("get $key  ----- get value of the key")
 	fmt.Println("put $key $value  ----- update key's value ")
 	fmt.Println("delete $key  ----- delete key from GIKV")

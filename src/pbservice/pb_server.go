@@ -201,6 +201,11 @@ func (pb *PBServer) killPBServer() {
 	pb.l.Close()
 }
 
+func (pb *PBServer) Kill(args *KillArgs, reply *KillReply) error {
+	pb.killPBServer()
+	return nil
+}
+
 // StartServer ... initialize PBServer and create a thread listen to master's request
 // also should ping viewserver periodically
 func StartServer(vshost string, me string) *PBServer {

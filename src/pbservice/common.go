@@ -59,6 +59,11 @@ type DeleteReply struct {
 	Err Err
 }
 
+type KillArgs struct {
+}
+
+type KillReply struct {
+}
 type GetArgs struct {
 	Key string
 }
