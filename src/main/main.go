@@ -148,10 +148,35 @@ func doKill(kind string, target string) bool {
 	return false
 }
 
+func doAdd(kind string, target string) bool {
+	label, err := strconv.Atoi(target)
+	if err != nil {
+		return false
+	}
+
+	switch kind {
+	case "-m":
+		{
+			master := msservice.Master{}
+			master.Init(label)
+			time.Sleep(time.Millisecond * 100)
+			fmt.Printf("Master %s has been created\n", target)
+			return true
+		}
+	case "-v":
+		{
+			pbservice.StartWorker(label, conn)
+			time.Sleep(time.Millisecond * 100)
+			fmt.Printf("ViewServer as well as its worker %s has been created\n", target)
+			return true
+		}
+	}
+	return false
+}
 func handleCmd(text string) {
 	tokens := strings.Split(text, " ")
 
-	if len(tokens) == 3 && (tokens[0] == "put" || tokens[0] == "kill") || (len(tokens) == 2 && (tokens[0] == "get" || tokens[0] == "delete")) {
+	if len(tokens) == 3 && (tokens[0] == "put" || tokens[0] == "kill" || tokens[0] == "add") || (len(tokens) == 2 && (tokens[0] == "get" || tokens[0] == "delete")) {
 		if strarted == false {
 			fmt.Println("GIKV has not been started")
 			return
@@ -173,6 +198,12 @@ func handleCmd(text string) {
 		case "kill":
 			{
 				if doKill(tokens[1], tokens[2]) == false {
+					printInvalidCmd(text)
+				}
+			}
+		case "add":
+			{
+				if doAdd(tokens[1], tokens[2]) == false {
 					printInvalidCmd(text)
 				}
 			}
@@ -201,6 +232,7 @@ func help() {
 	fmt.Println("start  ----- start GIKV")
 	fmt.Println("ls  ----- get current master,slave,viewserver,primary,backup")
 	fmt.Println("kill  ----- kill master(-m $master) or viewserver(-v $worker) or primary(-v $worker)")
+	fmt.Println("add  ----- add master(-m $master) or viewserver(-v $worker)")
 	fmt.Println("get $key  ----- get value of the key")
 	fmt.Println("put $key $value  ----- update key's value ")
 	fmt.Println("delete $key  ----- delete key from GIKV")
