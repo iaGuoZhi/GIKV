@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"math/rand"
 	"msservice"
 	"net/rpc"
 	"os"
@@ -18,7 +17,8 @@ import (
 )
 
 var strarted = false
-var startedMasters []string
+
+var conn *zk.Conn
 
 func call(srv string, rpcname string,
 	args interface{}, reply interface{}) bool {
@@ -50,11 +50,14 @@ func doPut(key string, value string) {
 	args := pbservice.PutArgs{Key: key, Value: value}
 	reply := pbservice.PutReply{}
 
-	random := rand.New(rand.NewSource(time.Now().UnixNano())).Intn(len(startedMasters))
+	masterRPCAddress, _, err2 := conn.Get(zkservice.MasterMasterPath)
+	if err2 != nil {
+		panic(err2)
+	}
 
 	ok := false
 	for !ok {
-		ok = call(startedMasters[random], "Master.Put", &args, &reply)
+		ok = call(string(masterRPCAddress), "Master.Put", &args, &reply)
 	}
 }
 
@@ -62,11 +65,14 @@ func doGet(key string) string {
 	args := pbservice.GetArgs{Key: key}
 	reply := pbservice.GetReply{}
 
-	random := rand.New(rand.NewSource(time.Now().UnixNano())).Intn(len(startedMasters))
+	masterRPCAddress, _, err2 := conn.Get(zkservice.MasterMasterPath)
+	if err2 != nil {
+		panic(err2)
+	}
 
 	ok := false
 	for !ok {
-		ok = call(startedMasters[random], "Master.Get", &args, &reply)
+		ok = call(string(masterRPCAddress), "Master.Get", &args, &reply)
 	}
 	return reply.Value
 }
@@ -75,19 +81,18 @@ func doDelete(key string) {
 	args := pbservice.DeleteArgs{Key: key}
 	reply := pbservice.DeleteReply{}
 
-	random := rand.New(rand.NewSource(time.Now().UnixNano())).Intn(len(startedMasters))
+	masterRPCAddress, _, err2 := conn.Get(zkservice.MasterMasterPath)
+	if err2 != nil {
+		panic(err2)
+	}
 
 	ok := false
 	for !ok {
-		ok = call(startedMasters[random], "Master.Delete", &args, &reply)
+		ok = call(string(masterRPCAddress), "Master.Delete", &args, &reply)
 	}
 }
 
 func doKill(kind string, target string) bool {
-	conn, _, err1 := zk.Connect([]string{zkservice.ZkServer}, time.Second)
-	if err1 != nil {
-		panic(err1)
-	}
 
 	switch kind {
 	case "-m":
@@ -226,7 +231,8 @@ func main() {
 
 func startGIKV() {
 	if !strarted {
-		conn, _, err1 := zk.Connect([]string{zkservice.ZkServer}, time.Second)
+		var err1 error
+		conn, _, err1 = zk.Connect([]string{zkservice.ZkServer}, time.Second)
 		if err1 != nil {
 			panic(err1)
 		}
@@ -245,26 +251,9 @@ func startGIKV() {
 			masters[i].Init(processName[i])
 		}
 
-		children, _, err2 := conn.Children(zkservice.MasterProcessPath)
-		if err2 != nil {
-			panic(err2)
-		}
+		strarted = true
+		fmt.Println("GIKV started successfully")
 
-		for _, child := range children {
-			path := zkservice.GetMasterProcessPath(child)
-			master, _, err3 := conn.Get(path)
-			if err3 != nil {
-				panic(err3)
-			}
-			startedMasters = append(startedMasters, string(master))
-		}
-
-		if len(startedMasters) <= 0 {
-			fmt.Println("start GIKV fail")
-		} else {
-			strarted = true
-			fmt.Println("GIKV started successfully")
-		}
 	} else {
 		fmt.Println("GIKV already started")
 	}
@@ -282,10 +271,6 @@ func lsGIKV() {
 	var viewservers []string
 	var primarys []string
 	var backups [][2]string
-	conn, _, err1 := zk.Connect([]string{zkservice.ZkServer}, time.Second)
-	if err1 != nil {
-		panic(err1)
-	}
 
 	masterAddressByte, _, err2 := conn.Get(zkservice.MasterMasterPath)
 	if err2 != nil {
