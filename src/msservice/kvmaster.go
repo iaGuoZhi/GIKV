@@ -94,7 +94,7 @@ func (master *Master) get(args *pbservice.GetArgs, reply *pbservice.GetReply, wo
 //
 func (master *Master) Put(args *pbservice.PutArgs, reply *pbservice.PutReply) error {
 
-	workerLabelStr, err1 := master.consistent.Get(args.Key)
+	workerLabelStr, err1 := master.consistent.GetN(args.Key, 2)
 	if err1 != nil {
 		panic(err1)
 	}
@@ -102,21 +102,24 @@ func (master *Master) Put(args *pbservice.PutArgs, reply *pbservice.PutReply) er
 		log.Printf("%s => %s\n", args.Key, workerLabelStr)
 	}
 
-	workerLable, err2 := strconv.Atoi(workerLabelStr)
-	if err2 != nil {
-		panic(err2)
-	}
-
-	ok := false
-	for !ok || reply.Err != pbservice.OK {
-		vok := false
-		var view viewservice.View
-		for !vok {
-			view, vok = master.workers[workerLable].vck.Get()
+	// put value in two worker, enhance availability
+	for i := 0; i < 2; i++ {
+		workerLable, err2 := strconv.Atoi(workerLabelStr[i])
+		if err2 != nil {
+			panic(err2)
 		}
-		srv := view.Primary
-		if srv != "" {
-			ok = call(srv, "PBServer.Put", args, &reply)
+
+		ok := false
+		for !ok || reply.Err != pbservice.OK {
+			vok := false
+			var view viewservice.View
+			for !vok {
+				view, vok = master.workers[workerLable].vck.Get()
+			}
+			srv := view.Primary
+			if srv != "" {
+				ok = call(srv, "PBServer.Put", args, &reply)
+			}
 		}
 	}
 	return nil

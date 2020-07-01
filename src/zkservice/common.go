@@ -60,6 +60,10 @@ func GetMasterProcessPath(masterLabel string) string {
 	return fmt.Sprintf("/GIKV/Master/Process/%s", masterLabel)
 }
 
+func GetMasterSlavePath(slaveLabel string) string {
+	return fmt.Sprintf("/GIKV/Master/Slave/%s", slaveLabel)
+}
+
 func CreateWorkParentPath(workerLabel int, conn *zk.Conn) error {
 	exists, _, err0 := conn.Exists(WorkerPath)
 	if err0 != nil {

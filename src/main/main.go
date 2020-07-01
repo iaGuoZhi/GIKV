@@ -8,8 +8,10 @@ import (
 	"net/rpc"
 	"os"
 	"pbservice"
+	"strconv"
 	"strings"
 	"time"
+	"viewservice"
 	"zkservice"
 
 	"github.com/samuel/go-zookeeper/zk"
@@ -126,6 +128,7 @@ func help() {
 	fmt.Println("GIKV is a distributed key-value store written by Guo-zhi using Go language")
 	fmt.Println("This Are the Avaliable commands: ")
 	fmt.Println("start  ----- start GIKV")
+	fmt.Println("ls  ----- get current master,slave,viewserver,primary,backup")
 	fmt.Println("get $key  ----- get value of the key")
 	fmt.Println("put $key $value  ----- update key's value ")
 	fmt.Println("delete $key  ----- delete key from GIKV")
@@ -136,6 +139,7 @@ func main() {
 	commands := map[string]interface{}{
 		"help":  help,
 		"start": startGIKV,
+		"ls":    lsGIKV,
 	}
 	reader := bufio.NewReader(os.Stdin)
 	help()
@@ -196,5 +200,81 @@ func startGIKV() {
 		}
 	} else {
 		fmt.Println("GIKV already started")
+	}
+}
+
+func lsGIKV() {
+	if !strarted {
+		fmt.Println("GIKV has't been started")
+		return
+	}
+
+	var masterAddress string
+	var slavesAddress []string
+	var workers []string
+	var viewservers []string
+	var primarys []string
+	var backups [][2]string
+	conn, _, err1 := zk.Connect([]string{zkservice.ZkServer}, time.Second)
+	if err1 != nil {
+		panic(err1)
+	}
+
+	masterAddressByte, _, err2 := conn.Get(zkservice.MasterMasterPath)
+	if err2 != nil {
+		panic(err2)
+	}
+	masterAddress = string(masterAddressByte)
+
+	slaves, _, err3 := conn.Children(zkservice.MasterSlavePath)
+	if err3 != nil {
+		panic(err3)
+	}
+	for _, slave := range slaves {
+		slavePath := zkservice.GetMasterSlavePath(slave)
+		slaveAddress, _, err3 := conn.Get(slavePath)
+		if err3 != nil {
+			panic(err3)
+		}
+		slavesAddress = append(slavesAddress, string(slaveAddress))
+	}
+
+	workers, _, err2 = conn.Children(zkservice.WorkerPath)
+	if err2 != nil {
+		panic(err2)
+	}
+
+	for _, worker := range workers {
+		workerLabel, err3 := strconv.Atoi(worker)
+		if err3 != nil {
+			panic(err3)
+		}
+		vsPath := zkservice.GetWorkViewServerPath(workerLabel)
+		vsAddress, _, err4 := conn.Get(vsPath)
+		if err4 != nil {
+			panic(err4)
+		}
+		viewservers = append(viewservers, string(vsAddress))
+
+		vck := viewservice.MakeClerk("", string(vsAddress))
+		vok := false
+		var view viewservice.View
+		for vok == false {
+			view, vok = vck.Get()
+		}
+		primarys = append(primarys, view.Primary)
+		backups = append(backups, view.Backup)
+	}
+	fmt.Println("GIKV current servers:")
+	fmt.Println("Master:")
+	fmt.Println(masterAddress)
+	fmt.Println("Slaves of Master")
+	fmt.Println(slavesAddress)
+	fmt.Println("Workers")
+	for i := range workers {
+		fmt.Printf("Worker %s :\n", workers[i])
+		fmt.Printf("    Viewserver: %s\n", viewservers[i])
+		fmt.Printf("    Primary: %s\n", primarys[i])
+		fmt.Println("    Backups: ", backups[i])
 	}
 }
