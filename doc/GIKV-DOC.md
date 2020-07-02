@@ -1,5 +1,15 @@
 # GIKV(kv-store) Lab Report
 **SE347 lab5 郭志 517021910503**
+
+**目录**  
+
+- [实验环境](#%E5%AE%9E%E9%AA%8C%E7%8E%AF%E5%A2%83)
+- [设计](#%E8%AE%BE%E8%AE%A1)
+- [实现](#%E5%AE%9E%E7%8E%B0)
+- [测试](#%E6%B5%8B%E8%AF%95)
+- [项目结构](#%E9%A1%B9%E7%9B%AE%E7%BB%93%E6%9E%84)
+- [总结](#%E6%80%BB%E7%BB%93)
+
 ## 实验环境
 ### zk集群配置
 #### 下载ZooKeeper
@@ -27,6 +37,11 @@ cd 进入```src/main```
 运行命令  ```go run main.go``` go会自动下载依赖包,并运行GIKV客户端
 
 ## 设计   
+
+### 节点分布图
+![](image/GIKV%20-%20Page%202%20(1).png)
+系统存在三类角色，分别是Zookeeper，Master和Worker。其中Zookeeper是一个Zookeeper集群，包含三个server。Master包含一个真正的Master和多个潜在的Master(Slave)。Worker由多个Worker节点构成(初始情况下为10个,可以动态加入删除)，每个Worker包含一个Primary和两个Backup以及一个用来指定当前Primary的ViewServer。
+
 ### 命名机制
 * GIKV: 项目名称，灵感来源tikv，由于这个项目使用**Go**语言编写，故命名为GIKV
 * Master集群： 包含一个Master节点和多个Slave节点。
@@ -37,12 +52,6 @@ cd 进入```src/main```
 * Primary节点： 对应课件中要求的data node，负责保存数据
 * Backup节点： 是Primary的备份，对应课件中要求data node有standby node
 * ViewServer节点： 确定当前Primary（Backup随时有可能成为新的Primary)
-
-### 节点分布图
-<p float="left">
-  <img src="image/node_distribution.png" width="700"/>
-</p>
-系统存在三类角色，分别是Zookeeper，Master和Worker。其中Zookeeper是一个Zookeeper集群，包含三个server。Master包含一个真正的Master和多个潜在的Master(Slave)。Worker由多个Worker节点构成(初始情况下为10个,可以动态加入删除)，每个Worker包含一个Primary和两个Backup以及一个用来指定当前Primary的ViewServer。
 
 ### zookeeper  
 #### zookeeper目录树
@@ -92,6 +101,7 @@ worker集群的设计要点：
 3. 数据会保存在两个worker节点上
 4. worker节点动态加入和删除会有数据迁移，保障数据可用
 5. worker节点内部一个primary有两个backup
+6. 竞争条件下的并发操作需要获得对应的锁,这一定程度上降低了可用性,增加了等待时间,但其实避免了错误的发生,使得系统更加健壮
 
 <a href="#实现">详细设计讲解见实现一栏</a>
 
@@ -100,8 +110,9 @@ worker集群的设计要点：
 系统中对于可扩展性的保障大概有以下几点:
 1. 随时支持新的master加入并工作 
 2. 支持worker节点的动态加入与删除
-3. **采用一致性哈希算法，并实现了虚拟节点**避免节点删除时数据迁移带来的雪崩现象
-4. 新节点加入时采用一种**lazy**的策略避免新节点加入需要做大量数据迁移
+3. 支持数据存储时的data partition
+4. **采用一致性哈希算法，并实现了虚拟节点**避免节点删除时数据迁移带来的雪崩现象
+5. 新节点加入时采用一种**lazy**的策略避免新节点加入需要做大量数据迁移
 
 <a href="#实现">详细设计讲解见实现一栏</a>
 
@@ -140,6 +151,9 @@ master负载均衡： 由于master和slave都保存着相同的worker元数据�
 ***图片来自SE347 分布式系统 2020 LEC 14: Distributed Database***  
 于是在GIKV中我实现了一个支持虚拟节点的一致性哈希算法(**每个物理节点有20个虚拟节点**，master利用这个算法会维护一个consistent table，并用来实现put，get，delete操作，以及节点的动态加入与删除
 
+### 数据Partitioin
+数据不会存储在所有的Worker节点上,Master会根据consistent hash table找到有关这个key的部分节点,并进行相应处理
+
 ### Put操作
 基本思路是通过master维护的consistent table找到put参数中key对应的节点(物理节点)并调用这个节点对应Worker的Put RPC来处理。  
 但为了保障高可用性，Put操作将会让key对应的物理节点和下一个物理节点中都进行处理，这与**dynamo**的**preference list**的设计比较相似，它是在一致性哈希对应节点后N个节点都有备份。  
@@ -150,15 +164,16 @@ master和slave节点都需要对ZooKeeper的```/GIKV/Worker```节点的```Childr
 
 ### Worker节点动态加入和删除时数据迁移操作
 #### 动态加入节点
-使用一种Lazy的策略，不用马上迁移数据，只需要在拿或者删除这个数据的时候进行相应的处理（Put仍然直接Put就行，不需要额外操作，因为允许多个Worker节点一个key有不一样的value存在，只需要保证consistent table中这个key对应的Worker节点有最新的值就行)。  
+使用一种**Lazy**的策略，不用马上迁移数据，只需要在**Get**或者**Delete**这个数据的时候进行相应的处理（Put仍然直接Put就行，不需要额外操作，因为允许多个Worker节点一个key有不一样的value存在，只需要保证consistent table中这个key对应的Worker节点有最新的值就行)。  
+
 #### 动态删除节点
 删除Worker节点分为两种情况：  
 删除Primary，此时ViewServer会从Primary中选取新的Primary出来（<a href="#viewServer机制">见viewServer机制</a>）  
 删除ViewServer， ViewServer被删除代表着这个Worker节点被删除掉，但是Master依然能够指挥Worker节点这个时候的Primary进行数据迁移。 具体的数据迁移策略是Primary针对每个key-value数据调用Master的```GetNextNode```接口，得到这个数据在一致性哈希中下一个物理节点对应Worker的RPC地址。然后调用PBServer（非Master,Master的Put会写在两个Worker里,这里只需要保存一次）的Put RPC将数据保存在合适的Worker处。  
 
 ### Get操作
-Get操作需要考虑两种情况，一个是consistent table中key对应的Worker有这个数据（正常情况），一个是consistent table中key对应的Worker没有这个数据（这个节点是新加入的节点，没有被主动迁移数据）。第一种情况只需要调用consistent服务提供的Get方法，而第二种情况需要调用consistent服务中提供的GetN方法，要把所有的虚拟节点都遍历一遍，按照顺序返回所有的物理节点，性能开销会大许多。因此采用了一种hierachy的策略：首先调用Get方法拿到consistent table中对应的Worker并发送Get请求，如果返回不存在，再调用GetN方法拿到所有的物理节点。  
-第二种情况下，拿到所有的物理节点后，按照顺序一个一个进行查找，如果存在就将这个key-value对调用Master的Put方法保存到consistent table中对应的Worker处，在使用这个数据的时候，完成它的迁移操作。如果所有节点都没有这个key，就返回不存在。  
+Get操作需要考虑两种情况，一个是consistent table中key对应的Worker有这个数据（正常情况），一个是consistent table中key对应的Worker没有这个数据（这个节点是新加入的节点，没有被主动迁移数据）。第一种情况只需要调用consistent服务提供的Get方法，而第二种情况需要调用consistent服务中提供的GetN方法，要把所有的虚拟节点都遍历一遍，按照顺序返回所有的物理节点，性能开销会大许多。因此采用了一种**hierachy**的策略：首先调用Get方法拿到consistent table中对应的Worker并发送Get请求，如果返回不存在，再调用GetN方法拿到所有的物理节点。  
+第二种情况，会是节点动态加入时数据迁移lazy策略的主要实现,主要操作如下: 拿到所有的物理节点后，按照顺序一个一个进行查找，如果存在就将这个key-value对调用Master的Put方法保存到consistent table中对应的Worker处，在使用这个数据的时候，完成它的迁移操作。如果所有节点都没有这个key，就返回不存在。  
 
 ### Delete操作
 由于Delete操作如果直接删除，会导致Get方法继续往下查找，很可能拿到旧值，所有Delete时在对应的Worker处将这个key标记为不存在，Get进行查找时，遇到这个标记直接返回。  
@@ -178,6 +193,8 @@ primary宕机发生view change的情况如图片所示：
 </p>
 
 ***图片来自SE227 计算机系统工程 2019 LEC 20: RSM and Paxos***
+
+在GIKV的ViewServer实现中,会让Primary和Backup每0.1s发一次心跳给ViewServer,如果连续五次没有收到一个Primary或者Backup的心跳,ViewServer就认为这个节点挂掉了,并进行相应处理.
 
 ### 并发操作锁服务
 会产生竞争的数据主要是kv-store中存储的数据（在同时读写删除的时候有竞争），Master维护的consistent table在查找与修改时有竞争。  
@@ -246,4 +263,5 @@ Master测试
 3. 学习了一些分布式中流行的算法: 如一致性哈希,ZooKeeper选举,ViewServer change view.
 4. 动手设计了一个重点在**可用性与可扩展性**的key-value store.它的master node和data node都做了备份,能够支持节点动态加入删除,并保障此时数据的可用性. 
 5. 学习了go 测试的技巧并对这个项目进行了比较全面的测试.
-6. 整个开发过程比较顺利,学习的速度比较快,能够感受到自己对于分布式的进一步深入理解与编程水平的提高.十分感谢老师和助教的这个Lab,让这个学期分布式课程中学到的知识能够付诸实践.
+6. 整个开发过程比较顺利,学习的速度比较快,能够感受到自己对于分布式的进一步深入理解与编程水平的提高.感到有难度的是对于分布式中crash consistency,high availability, fault tolerance, concurrent processing等场景进行分析,并实现在作业中
+7. 最后十分感谢老师和助教布置的这个Lab,让这个学期分布式课程中学到的知识能够付诸实践.
