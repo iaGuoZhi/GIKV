@@ -114,8 +114,14 @@ func RecursiveDelete(c *zk.Conn, path string) error {
 
 // InitEnv ... init zookeeper environment
 func InitEnv(conn *zk.Conn) {
-	RecursiveDelete(conn, WorkerPath)
-	_, err := conn.Create(WorkerPath, []byte{}, 0, zk.WorldACL(zk.PermAll))
+	RecursiveDelete(conn, RootPath)
+
+	_, err := conn.Create(RootPath, []byte{}, 0, zk.WorldACL(zk.PermAll))
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = conn.Create(WorkerPath, []byte{}, 0, zk.WorldACL(zk.PermAll))
 	if err != nil {
 		panic(err)
 	}

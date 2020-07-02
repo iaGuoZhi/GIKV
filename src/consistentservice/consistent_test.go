@@ -8,49 +8,52 @@ import (
 )
 
 func TestNew(t *testing.T) {
+	fmt.Printf("Test: New Consistent ...\n")
 	c := New()
 	c.Add("cacheA")
 	c.Add("cacheB")
 	c.Add("cacheC")
 	users := []string{"user_mcnulty", "user_bunk", "user_omar", "user_bunny", "user_stringer"}
 	for _, u := range users {
-		server, err := c.Get(u)
+		_, err := c.Get(u)
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("%s => %s\n", u, server)
+		//fmt.Printf("%s => %s\n", u, server)
 	}
-	// Output:
+	/*// Output:
 	// user_mcnulty => cacheA
 	// user_bunk => cacheA
 	// user_omar => cacheA
 	// user_bunny => cacheC
-	// user_stringer => cacheC
+	// user_stringer => cacheC*/
+	fmt.Printf("  ... Passed\n")
 }
 
 func TestAdd(t *testing.T) {
+	fmt.Printf("Test: Add Node ...\n")
 	c := New()
 	c.Add("cacheA")
 	c.Add("cacheB")
 	c.Add("cacheC")
 	users := []string{"user_mcnulty", "user_bunk", "user_omar", "user_bunny", "user_stringer"}
-	fmt.Println("initial state [A, B, C]")
+	//fmt.Println("initial state [A, B, C]")
 	for _, u := range users {
-		server, err := c.Get(u)
+		_, err := c.Get(u)
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("%s => %s\n", u, server)
+		//fmt.Printf("%s => %s\n", u, server)
 	}
 	c.Add("cacheD")
 	c.Add("cacheE")
-	fmt.Println("\nwith cacheD, cacheE [A, B, C, D, E]")
+	//fmt.Println("\nwith cacheD, cacheE [A, B, C, D, E]")
 	for _, u := range users {
-		server, err := c.Get(u)
+		_, err := c.Get(u)
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("%s => %s\n", u, server)
+		//fmt.Printf("%s => %s\n", u, server)
 	}
 	// Output:
 	// initial state [A, B, C]
@@ -66,32 +69,34 @@ func TestAdd(t *testing.T) {
 	// user_omar => cacheA
 	// user_bunny => cacheE
 	// user_stringer => cacheE
+	fmt.Printf("  ... Passed\n")
 }
 
 func TestRemove(t *testing.T) {
+	fmt.Printf("Test: Remove Node ...\n")
 	c := New()
 	c.Add("cacheA")
 	c.Add("cacheB")
 	c.Add("cacheC")
 	users := []string{"user_mcnulty", "user_bunk", "user_omar", "user_bunny", "user_stringer"}
-	fmt.Println("initial state [A, B, C]")
+	//fmt.Println("initial state [A, B, C]")
 	for _, u := range users {
-		server, err := c.Get(u)
+		_, err := c.Get(u)
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("%s => %s\n", u, server)
+		//fmt.Printf("%s => %s\n", u, server)
 	}
 	c.Remove("cacheC")
-	fmt.Println("\ncacheC removed [A, B]")
+	//fmt.Println("\ncacheC removed [A, B]")
 	for _, u := range users {
-		server, err := c.Get(u)
+		_, err := c.Get(u)
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("%s => %s\n", u, server)
+		//fmt.Printf("%s => %s\n", u, server)
 	}
-	// Output:
+	/*// Output:
 	// initial state [A, B, C]
 	// user_mcnulty => cacheA
 	// user_bunk => cacheA
@@ -104,10 +109,12 @@ func TestRemove(t *testing.T) {
 	// user_bunk => cacheA
 	// user_omar => cacheA
 	// user_bunny => cacheB
-	// user_stringer => cacheB
+	// user_stringer => cacheB*/
+	fmt.Printf("  ... Passed\n")
 }
 
 func TestGetNext(t *testing.T) {
+	fmt.Printf("Test: Next Node ...\n")
 	c := New()
 	c.Add("cacheA")
 	c.Add("cacheB")
@@ -116,19 +123,19 @@ func TestGetNext(t *testing.T) {
 	c.Add("cacheE")
 	c.Add("cacheF")
 	users := []string{"user_mcnulty", "user_bunk", "user_omar", "user_bunny", "user_stringer"}
-	fmt.Println("initial state [A, B, C, D, E, F]")
+	//fmt.Println("initial state [A, B, C, D, E, F]")
 	for _, u := range users {
 		servers, err := c.GetN(u, 6)
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Println(servers)
+		//fmt.Println(servers)
 		for i := range servers {
 			nextServer, err1 := c.GetNext(u, servers[i])
 			if err1 != nil {
 				log.Fatal(err1)
 			}
-			fmt.Println(nextServer)
+			//fmt.Println(nextServer)
 			if i == 5 {
 				if !(strings.Compare("", nextServer) == 0) {
 					log.Fatalln("last node's next should be empty  ", nextServer)
@@ -140,4 +147,5 @@ func TestGetNext(t *testing.T) {
 			}
 		}
 	}
+	fmt.Printf("  ... Passed\n")
 }

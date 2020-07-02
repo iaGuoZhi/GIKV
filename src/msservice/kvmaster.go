@@ -103,7 +103,11 @@ func (master *Master) Put(args *pbservice.PutArgs, reply *pbservice.PutReply) er
 	}
 
 	// put value in two worker, enhance availability
-	for i := 0; i < 2; i++ {
+	for i := 0; i < len(workerLabelStr); i++ {
+		if workerLabelStr[i] == "" {
+			continue
+		}
+
 		workerLable, err2 := strconv.Atoi(workerLabelStr[i])
 		if err2 != nil {
 			panic(err2)

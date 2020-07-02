@@ -61,6 +61,7 @@ func (master *Master) tryMaster() {
 		utilservice.MyPrintln("now process is master")
 		master.bmaster = true
 		fmt.Println("[ZooKeeper: ] create path: ", zkservice.MasterMasterPath)
+		fmt.Println("[ZooKeeper: ] new master RPC address: ", master.myRPCAddress)
 	} else {
 		master.bmaster = false
 		// create slave node
@@ -82,7 +83,7 @@ func (master *Master) tryMaster() {
 		// add watch on master process
 		exists, _, evtCh, err0 := master.conn.ExistsW(zkservice.MasterMasterPath)
 		if err0 != nil || !exists {
-			master.tryMaster()
+			master.onMasterDown()
 		} else {
 			master.handleMasterDownEvt(evtCh)
 		}
@@ -90,7 +91,13 @@ func (master *Master) tryMaster() {
 }
 
 func (master *Master) onMasterDown() {
+	master.dropSlave()
 	master.tryMaster()
+}
+
+func (master *Master) dropSlave() {
+	slaveNodePath := filepath.Join(zkservice.MasterSlavePath, strconv.Itoa(master.label))
+	zkservice.RecursiveDelete(master.conn, slaveNodePath)
 }
 
 func (master *Master) handleMasterDownEvt(ch <-chan zk.Event) {
