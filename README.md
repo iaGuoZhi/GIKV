@@ -14,12 +14,12 @@
 ### zk集群配置
 #### 下载ZooKeeper
 从[ZooKeeper官网](https://zookeeper.apache.org/doc/r3.6.1/zookeeperStarted.html)下载ZooKeeper的二进制文件包，解压后文件如下:  
-![](image/zk_dir.png)
+![](doc/image/zk_dir.png)
 #### 安装ZooKeeper
 在单机上部署ZooKeeper的方式比较简单，按照官网下载安装下该zoo.cfg就可以运行一个singlealone模式的ZooKeeper。但为了模拟分布式场景，使得这个项目可用性更高，于是将ZooKeeper部署成replicated 模式：   
 在本地将singlealone下的ZooKeeper拷贝成了三份，准备部署三个（奇数节点）ZooKeeper实例，分别设置它们的zoo.cfg,更改它们的myid与zoo.cfg一致   
 zoo.cfg示例:   
-![](image/zk_install.png)
+![](doc/image/zk_install.png)
 
 #### 使用ZooKeeper
 运行```bin/zkCli.sh -server 127.0.0.1:2181```即可连接到一个ZooKeeper server
@@ -39,7 +39,7 @@ cd 进入```src/main```
 ## 设计   
 
 ### 节点分布图
-![](image/GIKV%20-%20Page%202%20(1).png)
+![](doc/image/GIKV%20-%20Page%202%20(1).png)
 系统存在三类角色，分别是Zookeeper，Master和Worker。其中Zookeeper是一个Zookeeper集群，包含三个server。Master包含一个真正的Master和多个潜在的Master(Slave)。Worker由多个Worker节点构成(初始情况下为10个,可以动态加入删除)，每个Worker包含一个Primary和两个Backup以及一个用来指定当前Primary的ViewServer。
 
 ### 命名机制
@@ -57,7 +57,7 @@ cd 进入```src/main```
 #### zookeeper目录树
 整个ZooKeeper的目录树如下
 <p float="left">
-  <img src="image/zk_tree.png" width="600"/>
+  <img src="doc/image/zk_tree.png" width="600"/>
 </p>
 
 * GIKV为项目名称
@@ -145,7 +145,7 @@ master负载均衡： 由于master和slave都保存着相同的worker元数据�
 一致性哈希的基本思想是N个节点随机分布在2^k（在GIKV的实现中，k=64）个点的circle上，每个节点负责自己的哈希值到下一个节点的哈希值中间的数据请求。然后这种单纯的一致性哈希实现在节点删除的时候会出现雪崩的情况，因为一个节点被删除它的数据由下一个节点处理，这导致下一个节点负载过大，很可能会crash掉，于是它的数据有需要传递给下一个节点，如此递归。最后整个系统都将崩溃。  
 分布式课堂中讲到过为一致性哈希增加**虚拟节点**的方法，让每个物理节点管理一系列不连续的虚拟节点，这种情况下，一个物理节点宕机后，它的数据会均摊到其他所有节点上，负载均衡，消除了雪崩的危险。  
 <p float="left">
-  <img src="image/consistent_hash.png" width="400" />
+  <img src="doc/image/consistent_hash.png" width="400" />
 </p>
 
 ***图片来自SE347 分布式系统 2020 LEC 14: Distributed Database***  
@@ -188,8 +188,8 @@ backup会在合适的时间成为下一个primary，<a href="#viewServer机制">
 在计算机系统工程课程中，我们有学到过viewServer的知识，它是引入了一个新的节点，来接受primary和backup规律性的心跳，并告诉primary和backup各自的角色，如果出现了primary宕机或者网络连接断掉的情况，viewServer会根据一段时间没有收到来自primary心跳判断出primary已经挂掉，选择一个backup作为新的primary，此时就发生了一个view change。viewServer会记录着primary和backup的信息，需要找primary的节点（上课时讲的是coordinator，这里为master）会先问viewServer。    
 primary宕机发生view change的情况如图片所示：  
 <p float="left">
-  <img src="image/vs0.png" width="420" />
-  <img src="image/vs2.png" width="420" /> 
+  <img src="doc/image/vs0.png" width="420" />
+  <img src="doc/image/vs2.png" width="420" /> 
 </p>
 
 ***图片来自SE227 计算机系统工程 2019 LEC 20: RSM and Paxos***
@@ -228,25 +228,25 @@ if err == nil && master.dead == false {
 
 ### 测试结果与测试覆盖率
 <p float="left">
-  <img src="image/consistent_test_result.png" width="420">一致性哈希测试</>
-  <img src="image/vs_test_result.png" width="420"> viewServer测试</> 
-  <img src="image/pb_test_result.png" width="420"> Primary&Backup测试</> 
+  <img src="doc/image/consistent_test_result.png" width="420">一致性哈希测试</>
+  <img src="doc/image/vs_test_result.png" width="420"> viewServer测试</> 
+  <img src="doc/image/pb_test_result.png" width="420"> Primary&Backup测试</> 
 </p>
 Master测试  
 <p float="left">
-  <img src="image/ms_t1.png" width="280"/> 
-  <img src="image/ms_t2.png" width="280"/> 
-  <img src="image/ms_t3.png" width="280"/> 
+  <img src="doc/image/ms_t1.png" width="280"/> 
+  <img src="doc/image/ms_t2.png" width="280"/> 
+  <img src="doc/image/ms_t3.png" width="280"/> 
 </p>
 
 ### 运行client进行测试
 为了更好的展示出GIKV的功能以及**高可用性**,**高可扩展性**。我写了一个repl client来整体测试GIKV的功能，repl支持的功能如下：   
-![](image/repl_help.png)  
+![](doc/image/repl_help.png)  
 可以看到通过这个repl client不仅能够测试put，get，delete等kv操作，还能够控制节点的加入与删除，来测试应用的可用性与可扩展性。   
 在测试过程中，我开始有**10个**Worker节点，并put了一些值。 在不断kill Worker节点，add Worker节点，知道最后只剩下**1个**Worker节点时，依然能够正确读出key所对应的value。 这充分说明了GIKV的高可用性与高可扩展性。 
 
 ## 项目结构
-![](image/project_structure.png)
+![](doc/image/project_structure.png)
 - /consistentservice包含一致性哈希算法的实现和测试
 - /github.com/samuel 是go中zookeeper client的包
 - /main 包含一个用于测试整个项目功能的repl client，支持put，get,delete,kill,add等操作
