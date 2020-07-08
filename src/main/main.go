@@ -231,7 +231,7 @@ func help() {
 	fmt.Println("This Are the Avaliable commands: ")
 	fmt.Println("start  ----- start GIKV")
 	fmt.Println("ls  ----- get current master,slave,viewserver,primary,backup")
-	fmt.Println("kill  ----- kill master(-m $master) or viewserver(-v $worker) or primary(-v $worker)")
+	fmt.Println("kill  ----- kill master(-m $master) or viewserver(-v $worker) or primary(-p $worker)")
 	fmt.Println("add  ----- add master(-m $master) or viewserver(-v $worker)")
 	fmt.Println("get $key  ----- get value of the key")
 	fmt.Println("put $key $value  ----- update key's value ")

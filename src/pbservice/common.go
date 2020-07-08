@@ -115,13 +115,13 @@ func port(tag string, host int) string {
 // StartWorker ... encapsulate worker's start procedure
 func StartWorker(workerLabel int, conn *zk.Conn) error {
 	vshost := port("viewserver", workerLabel)
+
 	viewservice.StartServer(vshost)
 
-	var servers [3]string
 	for i := 0; i < 3; i++ {
 		prefix := fmt.Sprintf("worker%d-node", workerLabel)
-		servers[i] = port(prefix, i)
-		StartServer(vshost, servers[i])
+		server := port(prefix, i)
+		StartServer(vshost, server)
 	}
 
 	// create zk path for viewserver
